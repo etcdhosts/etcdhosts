@@ -12,15 +12,11 @@ import (
 // ServeDNS implements the plugin.Handler interface.
 func (gDns *GDns) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
 	state := request.Request{W: w, Req: r}
-
+	log.Info(state)
 	zone := plugin.Zones(gDns.Zones).Matches(state.Name())
 	if zone == "" {
 		return plugin.NextOrFailure(gDns.Name(), gDns.Next, ctx, w, r)
 	}
-
-	resp := new(dns.Msg)
-	resp.SetReply(r)
-	resp.Authoritative = true
 
 	var (
 		records, extra []dns.RR
@@ -29,7 +25,7 @@ func (gDns *GDns) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 
 	switch state.QType() {
 	case dns.TypeA:
-		records, err = gDns.getARecord()
+		records, err = gDns.getARecord(state)
 	case dns.TypeAAAA:
 		records, err = gDns.getAAAARecord()
 	case dns.TypeTXT:
@@ -43,6 +39,17 @@ func (gDns *GDns) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 
 	}
 
+	if err != nil {
+		if err == errKeyNotFound {
+			return plugin.NextOrFailure(gDns.Name(), gDns.Next, ctx, w, r)
+		} else {
+			return dns.RcodeBadName, err
+		}
+	}
+
+	resp := new(dns.Msg)
+	resp.SetReply(r)
+	resp.Authoritative = true
 	resp.Answer = append(resp.Answer, records...)
 	resp.Extra = append(resp.Extra, extra...)
 

@@ -32,7 +32,7 @@ func setup(c *caddy.Controller) error {
 }
 
 func etcdParse(c *caddy.Controller) (*GDns, error) {
-	etc := GDns{PathPrefix: "gdns"}
+	etc := GDns{PathPrefix: "/gdns"}
 	var (
 		tlsConfig *tls.Config
 		err       error
