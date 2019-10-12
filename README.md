@@ -2,7 +2,7 @@
 
 > gdns 是一个 CoreDNS 插件，后端对接 Etcd，以实现分布一致性的 CoreDNS 集群；插件目前只实现了相关记录的精确查找，部分记录类型尚未实现
 
-### 编译安装
+## 编译安装
 
 请自行 clone CoreDNS 仓库，然后修改 `plugin.cfg` 配置文件(当前 gdns 基于 CoreDNS v1.6.4 开发)，并执行 `make` 既可
 
@@ -76,11 +76,11 @@ on:github.com/caddyserver/caddy/onevent
 sign:sign
 ```
 
-#### 插件配置
+## 插件配置
 
 gdns 插件配置与 [etcd](https://coredns.io/plugins/etcd/) 插件配置完全相同，并且移除了 etcd 内无效配置(已经无效，但允许写入的字段)
 
-#### 数据格式
+## 数据格式
 
 请求到达 gdns 后，gdns 会向 Etcd 查询相关 key，并使用 value 反序列化后得到结果
 
