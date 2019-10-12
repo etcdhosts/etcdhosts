@@ -12,38 +12,17 @@ import (
 // ServeDNS implements the plugin.Handler interface.
 func (gDns *GDns) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
 	state := request.Request{W: w, Req: r}
-	log.Info(state)
 	zone := plugin.Zones(gDns.Zones).Matches(state.Name())
 	if zone == "" {
 		return plugin.NextOrFailure(gDns.Name(), gDns.Next, ctx, w, r)
 	}
 
-	var (
-		records, extra []dns.RR
-		err            error
-	)
-
-	switch state.QType() {
-	case dns.TypeA:
-		records, err = gDns.getARecord(state)
-	case dns.TypeAAAA:
-		records, err = gDns.getAAAARecord()
-	case dns.TypeTXT:
-	case dns.TypeCNAME:
-	case dns.TypePTR:
-	case dns.TypeMX:
-	case dns.TypeSRV:
-	case dns.TypeSOA:
-	case dns.TypeNS:
-	default:
-
-	}
+	records, err := gDns.getRecord(state)
 
 	if err != nil {
-		if err == errKeyNotFound {
+		log.Warning(err)
+		if err == errKeyNotFound && gDns.Fall.Through(state.Name()) {
 			return plugin.NextOrFailure(gDns.Name(), gDns.Next, ctx, w, r)
-		} else {
-			return dns.RcodeBadName, err
 		}
 	}
 
@@ -51,9 +30,11 @@ func (gDns *GDns) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 	resp.SetReply(r)
 	resp.Authoritative = true
 	resp.Answer = append(resp.Answer, records...)
-	resp.Extra = append(resp.Extra, extra...)
+	err = w.WriteMsg(resp)
+	if err != nil {
+		log.Error(err)
+	}
 
-	w.WriteMsg(resp)
 	return dns.RcodeSuccess, nil
 }
 

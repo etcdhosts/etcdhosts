@@ -32,7 +32,7 @@ func setup(c *caddy.Controller) error {
 }
 
 func etcdParse(c *caddy.Controller) (*GDns, error) {
-	etc := GDns{PathPrefix: "/gdns"}
+	gDns := GDns{PathPrefix: "/gdns"}
 	var (
 		tlsConfig *tls.Config
 		err       error
@@ -41,40 +41,35 @@ func etcdParse(c *caddy.Controller) (*GDns, error) {
 		password  string
 	)
 
-	etc.Upstream = upstream.New()
+	gDns.Upstream = upstream.New()
 
 	for c.Next() {
-		etc.Zones = c.RemainingArgs()
-		if len(etc.Zones) == 0 {
-			etc.Zones = make([]string, len(c.ServerBlockKeys))
-			copy(etc.Zones, c.ServerBlockKeys)
+		gDns.Zones = c.RemainingArgs()
+		if len(gDns.Zones) == 0 {
+			gDns.Zones = make([]string, len(c.ServerBlockKeys))
+			copy(gDns.Zones, c.ServerBlockKeys)
 		}
-		for i, str := range etc.Zones {
-			etc.Zones[i] = plugin.Host(str).Normalize()
+		for i, str := range gDns.Zones {
+			gDns.Zones[i] = plugin.Host(str).Normalize()
 		}
 
 		for c.NextBlock() {
 			switch c.Val() {
-			case "stubzones":
-				// ignored, remove later.
 			case "fallthrough":
-				etc.Fall.SetZonesFromArgs(c.RemainingArgs())
+				gDns.Fall.SetZonesFromArgs(c.RemainingArgs())
 			case "debug":
 				/* it is a noop now */
 			case "path":
 				if !c.NextArg() {
 					return &GDns{}, c.ArgErr()
 				}
-				etc.PathPrefix = c.Val()
+				gDns.PathPrefix = c.Val()
 			case "endpoint":
 				args := c.RemainingArgs()
 				if len(args) == 0 {
 					return &GDns{}, c.ArgErr()
 				}
 				endpoints = args
-			case "upstream":
-				// remove soon
-				c.RemainingArgs()
 			case "tls": // cert key cacertfile
 				args := c.RemainingArgs()
 				tlsConfig, err = mwtls.NewTLSConfigFromArgs(args...)
@@ -100,10 +95,10 @@ func etcdParse(c *caddy.Controller) (*GDns, error) {
 		if err != nil {
 			return &GDns{}, err
 		}
-		etc.Client = client
-		etc.endpoints = endpoints
+		gDns.Client = client
+		gDns.endpoints = endpoints
 
-		return &etc, nil
+		return &gDns, nil
 	}
 	return &GDns{}, nil
 }
