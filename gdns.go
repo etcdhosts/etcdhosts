@@ -42,19 +42,32 @@ type GDns struct {
 
 func (gDns *GDns) getRecord(req request.Request) ([]dns.RR, error) {
 
+	var records []dns.RR
+	var domainKey string
+	domainRevers := path.Join(reverse(strings.FieldsFunc(req.Name(), func(r rune) bool { return r == '.' }))...)
+
 	switch req.QType() {
+	case dns.TypeA:
+		domainKey = path.Join(gDns.PathPrefix, domainRevers, "TYPE_A")
+	case dns.TypeAAAA:
+		domainKey = path.Join(gDns.PathPrefix, domainRevers, "TYPE_AAAA")
+	case dns.TypeTXT:
+		domainKey = path.Join(gDns.PathPrefix, domainRevers, "TYPE_TXT")
+	case dns.TypeCNAME:
+		domainKey = path.Join(gDns.PathPrefix, domainRevers, "TYPE_CNAME")
+	case dns.TypePTR:
+		domainKey = path.Join(gDns.PathPrefix, domainRevers, "TYPE_PTR")
+	case dns.TypeNS:
+		domainKey = path.Join(gDns.PathPrefix, domainRevers, "TYPE_NS")
 	case dns.TypeMX:
 		fallthrough
 	case dns.TypeSRV:
 		fallthrough
 	case dns.TypeSOA:
-		return nil, errQueryNotSupport
+		fallthrough
 	default:
+		return nil, errQueryNotSupport
 	}
-
-	var records []dns.RR
-	domainRevers := path.Join(reverse(strings.FieldsFunc(req.Name(), func(r rune) bool { return r == '.' }))...)
-	domainKey := path.Join(gDns.PathPrefix, domainRevers)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
