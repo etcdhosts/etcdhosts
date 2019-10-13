@@ -84,13 +84,12 @@ gdns 插件配置与 [etcd](https://coredns.io/plugins/etcd/) 插件配置完全
 
 请求到达 gdns 后，gdns 会向 Etcd 查询相关 key，并使用 value 反序列化后得到结果
 
-**key 格式: `GDNS_PATHPREFIX + /FQDN + /QType`**
+**key 格式: `GDNS_PATHPREFIX + /reverse(domain)`**
 
 - GDNS_PATHPREFIX: 默认为 `/gdns`
-- FQDN: 绝对域名, 例如 `test.com.`
-- QType: 查询类型, 例如 `AAAA`
+- reverse(domain): 域名反转并 `/` 分割, 例如 `/com/test/a`
 
-Example: `/gdns/baidu.com./NS`
+Example: `/gdns/com/test/a`
 
 **value 格式: `'{"type":QType,"records":["String"],"ttl":600}'`**
 
@@ -103,5 +102,5 @@ Example: `{"type":2,"records":["ns3.baidu.com.","ns4.baidu.com."],"ttl":600}`
 **etcdctl 命令样例**
 
 ```shell script
-etcdctl put /gdns/baidu.com./NS '{"type":2,"records":["ns3.baidu.com.","ns4.baidu.com."],"ttl":600}'
+etcdctl put /gdns/com/baidu/test '{"type":1,"records":["3.3.3.3"],"ttl":600}'
 ```
