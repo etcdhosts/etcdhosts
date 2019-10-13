@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"path"
+	"strings"
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
@@ -40,31 +41,20 @@ type GDns struct {
 }
 
 func (gDns *GDns) getRecord(req request.Request) ([]dns.RR, error) {
-	var records []dns.RR
-	var domainKey string
 
 	switch req.QType() {
-	case dns.TypeA:
-		domainKey = path.Join(gDns.PathPrefix, req.Name(), "A")
-	case dns.TypeAAAA:
-		domainKey = path.Join(gDns.PathPrefix, req.Name(), "AAAA")
-	case dns.TypeTXT:
-		domainKey = path.Join(gDns.PathPrefix, req.Name(), "TXT")
-	case dns.TypeCNAME:
-		domainKey = path.Join(gDns.PathPrefix, req.Name(), "CNAME")
-	case dns.TypePTR:
-		domainKey = path.Join(gDns.PathPrefix, req.Name(), "PTR")
-	case dns.TypeNS:
-		domainKey = path.Join(gDns.PathPrefix, req.Name(), "NS")
 	case dns.TypeMX:
 		fallthrough
 	case dns.TypeSRV:
 		fallthrough
 	case dns.TypeSOA:
-		fallthrough
-	default:
 		return nil, errQueryNotSupport
+	default:
 	}
+
+	var records []dns.RR
+	domainRevers := path.Join(reverse(strings.FieldsFunc(req.Name(), func(r rune) bool { return r == '.' }))...)
+	domainKey := path.Join(gDns.PathPrefix, domainRevers)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -80,8 +70,7 @@ func (gDns *GDns) getRecord(req request.Request) ([]dns.RR, error) {
 	for _, k := range etcdResp.Kvs {
 
 		var etcdRecord EtcdDnsRecord
-		err := jsoniter.Unmarshal(k.Value, &etcdRecord)
-		if err != nil {
+		if err := jsoniter.Unmarshal(k.Value, &etcdRecord); err != nil {
 			log.Warningf("failed to unmarshal record %v", k.Value)
 			continue
 		}
@@ -136,4 +125,12 @@ func (gDns *GDns) getRecord(req request.Request) ([]dns.RR, error) {
 	}
 
 	return records, nil
+}
+
+func reverse(ss []string) []string {
+	for i := len(ss)/2 - 1; i >= 0; i-- {
+		opp := len(ss) - 1 - i
+		ss[i], ss[opp] = ss[opp], ss[i]
+	}
+	return ss
 }
