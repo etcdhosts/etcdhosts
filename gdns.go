@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net"
 	"path"
-	"strings"
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
@@ -30,12 +29,32 @@ const (
 )
 
 var errKeyNotFound = errors.New("key not found")
+var errTooManyKeyFound = errors.New("too many key found")
 var errQueryNotSupport = errors.New("query type not support")
 
 type EtcdDnsRecord struct {
 	Type    uint16   `json:"type"`
 	Records []string `json:"records"`
 	TTL     uint32   `json:"ttl"`
+}
+
+func checkGDNSQueryType(qType uint16) bool {
+	switch qType {
+	case dns.TypeA:
+		fallthrough
+	case dns.TypeAAAA:
+		fallthrough
+	case dns.TypeTXT:
+		fallthrough
+	case dns.TypeCNAME:
+		fallthrough
+	case dns.TypePTR:
+		fallthrough
+	case dns.TypeNS:
+		return true
+	default:
+		return false
+	}
 }
 
 type GDns struct {
@@ -52,31 +71,12 @@ type GDns struct {
 func (gDns *GDns) getRecord(req request.Request) ([]dns.RR, error) {
 
 	var records []dns.RR
-	var domainKey string
-	domainRevers := path.Join(reverse(strings.FieldsFunc(req.Name(), func(r rune) bool { return r == '.' }))...)
 
-	switch req.QType() {
-	case dns.TypeA:
-		domainKey = path.Join(gDns.PathPrefix, domainRevers, GDNS_TYPE_A)
-	case dns.TypeAAAA:
-		domainKey = path.Join(gDns.PathPrefix, domainRevers, GDNS_TYPE_AAAA)
-	case dns.TypeTXT:
-		domainKey = path.Join(gDns.PathPrefix, domainRevers, GDNS_TYPE_TXT)
-	case dns.TypeCNAME:
-		domainKey = path.Join(gDns.PathPrefix, domainRevers, GDNS_TYPE_CNAME)
-	case dns.TypePTR:
-		domainKey = path.Join(gDns.PathPrefix, domainRevers, GDNS_TYPE_PTR)
-	case dns.TypeNS:
-		domainKey = path.Join(gDns.PathPrefix, domainRevers, GDNS_TYPE_NS)
-	case dns.TypeMX:
-		fallthrough
-	case dns.TypeSRV:
-		fallthrough
-	case dns.TypeSOA:
-		fallthrough
-	default:
+	if !checkGDNSQueryType(req.QType()) {
 		return nil, errQueryNotSupport
 	}
+
+	domainKey := path.Join(gDns.PathPrefix, req.QName())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -85,9 +85,16 @@ func (gDns *GDns) getRecord(req request.Request) ([]dns.RR, error) {
 	if err != nil {
 		return records, err
 	}
+
 	if etcdResp.Count == 0 {
 		return records, errKeyNotFound
 	}
+
+	if etcdResp.Count > 1 {
+		return records, errTooManyKeyFound
+	}
+
+	kv := etcdResp.Kvs[0]
 
 	for _, k := range etcdResp.Kvs {
 
