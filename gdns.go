@@ -44,8 +44,6 @@ func checkGDNSQueryType(qType uint16) bool {
 		fallthrough
 	case dns.TypeCNAME:
 		fallthrough
-	case dns.TypePTR:
-		fallthrough
 	case dns.TypeNS:
 		return true
 	default:
@@ -142,11 +140,6 @@ func (gDNS *GDNS) getRecord(req request.Request) ([]dns.RR, error) {
 				records = append(records, &dns.CNAME{
 					Hdr:    hdr,
 					Target: r.Record,
-				})
-			case dns.TypePTR:
-				records = append(records, &dns.PTR{
-					Hdr: hdr,
-					Ptr: r.Record,
 				})
 			case dns.TypeNS:
 				records = append(records, &dns.NS{

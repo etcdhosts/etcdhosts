@@ -104,5 +104,5 @@ Example: `{"1":[{"domain":"example.com","sub_domain":"test","type":1,"record":"1
 **etcdctl 命令样例**
 
 ```shell script
-etcdctl put /gdns/com/baidu/test '{"1":[{"domain":"example.com","sub_domain":"test","type":1,"record":"1.2.3.4","ttl":600}],"28":[{"domain":"example.com","sub_domain":"ipv6","type":28,"record":"2001:0db8:3c4d:0015:0000:0000:1a2f:1a2b","ttl":600}]}'
+etcdctl put /gdns/example.com '{"1":[{"domain":"example.com","sub_domain":"test","type":1,"record":"1.2.3.4","ttl":600}],"28":[{"domain":"example.com","sub_domain":"ipv6","type":28,"record":"2001:0db8:3c4d:0015:0000:0000:1a2f:1a2b","ttl":600}]}'
 ```
