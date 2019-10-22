@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"path"
+	"strings"
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
@@ -19,24 +20,19 @@ import (
 	etcdcv3 "go.etcd.io/etcd/clientv3"
 )
 
-const (
-	GDNS_TYPE_A     = "TYPE_A"
-	GDNS_TYPE_AAAA  = "TYPE_AAAA"
-	GDNS_TYPE_TXT   = "TYPE_TXT"
-	GDNS_TYPE_CNAME = "TYPE_CNAME"
-	GDNS_TYPE_PTR   = "TYPE_PTR"
-	GDNS_TYPE_NS    = "TYPE_NS"
-)
-
 var errKeyNotFound = errors.New("key not found")
 var errTooManyKeyFound = errors.New("too many key found")
 var errQueryNotSupport = errors.New("query type not support")
 
-type EtcdDnsRecord struct {
-	Type    uint16   `json:"type"`
-	Records []string `json:"records"`
-	TTL     uint32   `json:"ttl"`
+type EtcdDNSRecord struct {
+	Domain    string `json:"domain"`
+	SubDomain string `json:"sub_domain"`
+	Type      uint16 `json:"type"`
+	Record    string `json:"record"`
+	TTL       uint32 `json:"ttl"`
 }
+
+type EtcdDNSRecords map[uint16][]EtcdDNSRecord
 
 func checkGDNSQueryType(qType uint16) bool {
 	switch qType {
@@ -57,7 +53,7 @@ func checkGDNSQueryType(qType uint16) bool {
 	}
 }
 
-type GDns struct {
+type GDNS struct {
 	Next       plugin.Handler
 	Fall       fall.F
 	Zones      []string
@@ -68,7 +64,7 @@ type GDns struct {
 	endpoints []string // Stored here as well, to aid in testing.
 }
 
-func (gDns *GDns) getRecord(req request.Request) ([]dns.RR, error) {
+func (gDNS *GDNS) getRecord(req request.Request) ([]dns.RR, error) {
 
 	var records []dns.RR
 
@@ -76,12 +72,23 @@ func (gDns *GDns) getRecord(req request.Request) ([]dns.RR, error) {
 		return nil, errQueryNotSupport
 	}
 
-	domainKey := path.Join(gDns.PathPrefix, req.QName())
+	ss := strings.FieldsFunc(req.QName(), func(r rune) bool { return r == '.' })
+	if len(ss) < 2 {
+		return records, nil
+	}
+
+	domain := ss[len(ss)-2] + "." + ss[len(ss)-1]
+	subDomain := strings.Join(ss[:len(ss)-2], ".")
+	if len(ss) == 2 {
+		subDomain = "@"
+	}
+
+	domainKey := path.Join(gDNS.PathPrefix, domain)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	etcdResp, err := gDns.Client.Get(ctx, domainKey)
+	etcdResp, err := gDNS.Client.Get(ctx, domainKey)
 	if err != nil {
 		return records, err
 	}
@@ -95,71 +102,61 @@ func (gDns *GDns) getRecord(req request.Request) ([]dns.RR, error) {
 	}
 
 	kv := etcdResp.Kvs[0]
+	var etcdRecords EtcdDNSRecords
+	if err := jsoniter.Unmarshal(kv.Value, &etcdRecords); err != nil {
+		return records, err
+	}
 
-	for _, k := range etcdResp.Kvs {
+	rs := etcdRecords[req.QType()]
+	if rs == nil {
+		return records, nil
+	}
 
-		var etcdRecord EtcdDnsRecord
-		if err := jsoniter.Unmarshal(k.Value, &etcdRecord); err != nil {
-			log.Warningf("failed to unmarshal record %v", k.Value)
-			continue
-		}
+	for _, r := range rs {
 
-		if etcdRecord.Type != req.QType() {
-			log.Warningf("record type error, find [%d] expect [%d]", etcdRecord.Type, req.QType())
-			continue
-		}
-
-		for _, v := range etcdRecord.Records {
+		if r.Domain == domain && r.SubDomain == subDomain {
 			hdr := dns.RR_Header{
 				Name:   req.QName(),
 				Rrtype: req.QType(),
 				Class:  req.QClass(),
-				Ttl:    etcdRecord.TTL,
+				Ttl:    r.TTL,
 			}
 
 			switch req.QType() {
 			case dns.TypeA:
 				records = append(records, &dns.A{
 					Hdr: hdr,
-					A:   net.ParseIP(v),
+					A:   net.ParseIP(r.Record),
 				})
 			case dns.TypeAAAA:
 				records = append(records, &dns.AAAA{
 					Hdr:  hdr,
-					AAAA: net.ParseIP(v),
+					AAAA: net.ParseIP(r.Record),
 				})
 			case dns.TypeTXT:
 				records = append(records, &dns.TXT{
 					Hdr: hdr,
-					Txt: []string{v},
+					Txt: []string{r.Record},
 				})
 			case dns.TypeCNAME:
 				records = append(records, &dns.CNAME{
 					Hdr:    hdr,
-					Target: v,
+					Target: r.Record,
 				})
 			case dns.TypePTR:
 				records = append(records, &dns.PTR{
 					Hdr: hdr,
-					Ptr: v,
+					Ptr: r.Record,
 				})
 			case dns.TypeNS:
 				records = append(records, &dns.NS{
 					Hdr: hdr,
-					Ns:  v,
+					Ns:  r.Record,
 				})
 			}
-
 		}
+
 	}
 
 	return records, nil
-}
-
-func reverse(ss []string) []string {
-	for i := len(ss)/2 - 1; i >= 0; i-- {
-		opp := len(ss) - 1 - i
-		ss[i], ss[opp] = ss[opp], ss[i]
-	}
-	return ss
 }

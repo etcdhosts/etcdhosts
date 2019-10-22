@@ -31,8 +31,8 @@ func setup(c *caddy.Controller) error {
 	return nil
 }
 
-func etcdParse(c *caddy.Controller) (*GDns, error) {
-	gDns := GDns{PathPrefix: "/gdns"}
+func etcdParse(c *caddy.Controller) (*GDNS, error) {
+	gDns := GDNS{PathPrefix: "/gdns"}
 	var (
 		tlsConfig *tls.Config
 		err       error
@@ -61,46 +61,46 @@ func etcdParse(c *caddy.Controller) (*GDns, error) {
 				/* it is a noop now */
 			case "path":
 				if !c.NextArg() {
-					return &GDns{}, c.ArgErr()
+					return &GDNS{}, c.ArgErr()
 				}
 				gDns.PathPrefix = c.Val()
 			case "endpoint":
 				args := c.RemainingArgs()
 				if len(args) == 0 {
-					return &GDns{}, c.ArgErr()
+					return &GDNS{}, c.ArgErr()
 				}
 				endpoints = args
 			case "tls": // cert key cacertfile
 				args := c.RemainingArgs()
 				tlsConfig, err = mwtls.NewTLSConfigFromArgs(args...)
 				if err != nil {
-					return &GDns{}, err
+					return &GDNS{}, err
 				}
 			case "credentials":
 				args := c.RemainingArgs()
 				if len(args) == 0 {
-					return &GDns{}, c.ArgErr()
+					return &GDNS{}, c.ArgErr()
 				}
 				if len(args) != 2 {
-					return &GDns{}, c.Errf("credentials requires 2 arguments, username and password")
+					return &GDNS{}, c.Errf("credentials requires 2 arguments, username and password")
 				}
 				username, password = args[0], args[1]
 			default:
 				if c.Val() != "}" {
-					return &GDns{}, c.Errf("unknown property '%s'", c.Val())
+					return &GDNS{}, c.Errf("unknown property '%s'", c.Val())
 				}
 			}
 		}
 		client, err := newEtcdClient(endpoints, tlsConfig, username, password)
 		if err != nil {
-			return &GDns{}, err
+			return &GDNS{}, err
 		}
 		gDns.Client = client
 		gDns.endpoints = endpoints
 
 		return &gDns, nil
 	}
-	return &GDns{}, nil
+	return &GDNS{}, nil
 }
 
 func newEtcdClient(endpoints []string, tlsConfig *tls.Config, username, password string) (*etcdcv3.Client, error) {

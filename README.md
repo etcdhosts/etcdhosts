@@ -84,23 +84,25 @@ gdns 插件配置与 [etcd](https://coredns.io/plugins/etcd/) 插件配置完全
 
 请求到达 gdns 后，gdns 会向 Etcd 查询相关 key，并使用 value 反序列化后得到结果
 
-**key 格式: `GDNS_PATHPREFIX + /reverse(domain)`**
+**key 格式: `GDNS_PATHPREFIX + / + DOMAIN_NAME`**
 
 - GDNS_PATHPREFIX: 默认为 `/gdns`
-- reverse(domain): 域名反转并 `/` 分割, 例如 `/com/test/a`
+- DOMAIN_NAME: 域名, 例如 `test.com`
 
-Example: `/gdns/com/test/a`
+Example: `/gdns/test.com`
 
-**value 格式: `'{"type":QType,"records":["String"],"ttl":600}'`**
+**value 格式: `'{"QType":[{"domain":"DOMAIN","sub_domain":"SUB_DOMAIN","type":QTYPE,"record":"RECORD","ttl":TTL}]}'`**
 
-- type: 查询类型(uint16), 取值参考 [miekg/dns](https://github.com/miekg/dns/blob/40eab7a196d1397aa407c5c9b726fc48b1a9e9e8/types.go#L26)
-- records: 具体记录([]string), 字符串内容根据实际 DNS 请求确定，例如 NS 请求字符串必须为域名
+- QType: 查询类型(uint16), 取值参考 [miekg/dns](https://github.com/miekg/dns/blob/40eab7a196d1397aa407c5c9b726fc48b1a9e9e8/types.go#L26)
+- domain: 基础域名(string)，例如 `example.com`
+- sub_domain: 子域名(string)，例如 `test`
+- record: 具体记录(string), 字符串内容根据实际 DNS 请求确定，例如 NS 请求字符串必须为 FQDN
 - ttl: Time to live(uint32)
 
-Example: `{"type":2,"records":["ns3.baidu.com.","ns4.baidu.com."],"ttl":600}`
+Example: `{"1":[{"domain":"example.com","sub_domain":"test","type":1,"record":"1.2.3.4","ttl":600}],"28":[{"domain":"example.com","sub_domain":"ipv6","type":28,"record":"2001:0db8:3c4d:0015:0000:0000:1a2f:1a2b","ttl":600}]}`
 
 **etcdctl 命令样例**
 
 ```shell script
-etcdctl put /gdns/com/baidu/test '{"type":1,"records":["3.3.3.3"],"ttl":600}'
+etcdctl put /gdns/com/baidu/test '{"1":[{"domain":"example.com","sub_domain":"test","type":1,"record":"1.2.3.4","ttl":600}],"28":[{"domain":"example.com","sub_domain":"ipv6","type":28,"record":"2001:0db8:3c4d:0015:0000:0000:1a2f:1a2b","ttl":600}]}'
 ```
