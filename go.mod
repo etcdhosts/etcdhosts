@@ -10,8 +10,6 @@ replace (
 require (
 	github.com/caddyserver/caddy v1.0.3
 	github.com/coredns/coredns v1.6.4
-	github.com/coreos/bbolt v1.3.3 // indirect
-	github.com/coreos/etcd v3.3.17+incompatible // indirect
 	github.com/json-iterator/go v1.1.7
 	github.com/miekg/dns v1.1.22
 	go.etcd.io/etcd v0.0.0-20190823073701-67d0c21bb04c
