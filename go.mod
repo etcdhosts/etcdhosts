@@ -2,10 +2,7 @@ module github.com/gozap/gdns
 
 go 1.13
 
-replace (
-	github.com/coreos/etcd v3.3.17+incompatible => go.etcd.io/etcd v3.3.17+incompatible
-	golang.org/x/net v0.0.0-20190813000000-74dc4d7220e7 => golang.org/x/net v0.0.0-20191007182048-72f939374954
-)
+replace golang.org/x/net v0.0.0-20190813000000-74dc4d7220e7 => golang.org/x/net v0.0.0-20191007182048-72f939374954
 
 require (
 	github.com/caddyserver/caddy v1.0.3
