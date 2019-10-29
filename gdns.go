@@ -112,7 +112,6 @@ func (gDNS *GDNS) getRecord(req request.Request) ([]dns.RR, error) {
 	}
 
 	for _, r := range rs {
-
 		if r.Domain == domain && r.SubDomain == subDomain {
 			hdr := dns.RR_Header{
 				Name:   req.QName(),
@@ -152,5 +151,10 @@ func (gDNS *GDNS) getRecord(req request.Request) ([]dns.RR, error) {
 
 	}
 
-	return records, nil
+	if len(records) == 0 {
+		return records, errRecordNotFound
+	} else {
+		return records, nil
+	}
+
 }
