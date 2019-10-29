@@ -20,7 +20,7 @@ func (gDNS *GDNS) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 	records, err := gDNS.getRecord(state)
 
 	if err != nil {
-		if err == errKeyNotFound && gDNS.Fall.Through(state.Name()) {
+		if (err == errKeyNotFound || err == errRecordNotFound) && gDNS.Fall.Through(state.Name()) {
 			return plugin.NextOrFailure(gDNS.Name(), gDNS.Next, ctx, w, r)
 		} else {
 			log.Error(err)

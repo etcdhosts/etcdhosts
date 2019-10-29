@@ -21,6 +21,7 @@ import (
 )
 
 var errKeyNotFound = errors.New("key not found")
+var errRecordNotFound = errors.New("record not found")
 var errTooManyKeyFound = errors.New("too many key found")
 var errQueryNotSupport = errors.New("query type not support")
 
@@ -107,7 +108,7 @@ func (gDNS *GDNS) getRecord(req request.Request) ([]dns.RR, error) {
 
 	rs := etcdRecords[req.QType()]
 	if rs == nil {
-		return records, nil
+		return records, errRecordNotFound
 	}
 
 	for _, r := range rs {
