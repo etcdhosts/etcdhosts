@@ -90,6 +90,9 @@ cp ${GOPATH}/src/github.com/gozap/gdns/*.go ${GOPATH}/src/github.com/coredns/plu
 
 # make
 cd ${GOPATH}/src/github.com/coredns/coredns
+git checkout tags/v1.6.7 -b v1.6.7
+sed -i '/^hosts:hosts/i\gdns:gdns' plugin.cfg
+make -f Makefile gen
 make -f Makefile.release release DOCKER=coredns
 ```
 
