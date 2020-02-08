@@ -6,7 +6,7 @@
 
 请自行 clone CoreDNS 仓库，然后修改 `plugin.cfg` 配置文件(当前 gdns 基于 CoreDNS v1.6.7 开发)，并执行 `make` 既可
 
-**`plugin.cfg` 内 gdns 插入顺序影响 gdns 插件执行顺序，以下配置样例中 gdns 插件将优先 etcd 插件捕获 dns 请求，并根据 `fallthrough` 配置决定解析失败时是否继续穿透**
+**`plugin.cfg` 内 gdns 插入顺序影响 gdns 插件执行顺序，以下配置样例中 gdns 插件将优先 hosts 插件捕获 dns 请求，并根据 `fallthrough` 配置决定解析失败时是否继续穿透**
 
 ```shell script
 # Directives are registered in the order they should be
@@ -55,6 +55,7 @@ rewrite:rewrite
 dnssec:dnssec
 autopath:autopath
 template:template
+gdns:gdns
 hosts:hosts
 route53:route53
 azure:azure
@@ -65,7 +66,6 @@ kubernetes:kubernetes
 file:file
 auto:auto
 secondary:secondary
-gdns:github.com/gozap/gdns
 etcd:etcd
 loop:loop
 forward:forward
@@ -75,6 +75,25 @@ whoami:whoami
 on:github.com/caddyserver/caddy/onevent
 sign:sign
 ```
+
+**完整编译命令如下:**
+
+```sh
+# clone source 
+mkdir -p ${GOPATH}/src/github.com/coredns ${GOPATH}/src/github.com/gozap
+git clone https://github.com/coredns/coredns.git ${GOPATH}/src/github.com/coredns/coredns
+git clone https://github.com/Gozap/gdns.git ${GOPATH}/src/github.com/gozap/gdns
+
+# copy plugin
+mkdir -p ${GOPATH}/src/github.com/coredns/plugin/gdns
+cp ${GOPATH}/src/github.com/gozap/gdns/*.go ${GOPATH}/src/github.com/coredns/plugin/gdns
+
+# make
+cd ${GOPATH}/src/github.com/coredns/coredns
+make -f Makefile.release release DOCKER=coredns
+```
+
+编译完成后可在 release 目录下找到编译好的文件
 
 ## 插件配置
 
