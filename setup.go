@@ -170,7 +170,7 @@ func hostsParse(c *caddy.Controller) (Hosts, error) {
 
 	// default etcd key
 	if h.etcdHostsKey == "" {
-		h.etcdHostsKey = "gdns"
+		h.etcdHostsKey = "/gdns"
 	}
 
 	// default etcd client timeout

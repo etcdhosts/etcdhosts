@@ -116,12 +116,12 @@ gdns [ZONES...] {
 }
 ```
 
-其中 key 默认为 `gdns`，timeout 默认为 3s，以下是一段样例配置:
+其中 key 默认为 `/gdns`，timeout 默认为 3s，以下是一段样例配置:
 
 ```sh
 gdns . {
     fallthrough .
-    key gdns
+    key /gdns
     timeout 5s
     tls /tmp/test_etcd_ssl/etcd.pem /tmp/test_etcd_ssl/etcd-key.pem /tmp/test_etcd_ssl/etcd-root-ca.pem
     endpoint https://172.16.11.115:2379 https://172.16.11.116:2379 https://172.16.11.117:2379
