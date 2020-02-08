@@ -85,8 +85,8 @@ git clone https://github.com/coredns/coredns.git ${GOPATH}/src/github.com/coredn
 git clone https://github.com/Gozap/gdns.git ${GOPATH}/src/github.com/gozap/gdns
 
 # copy plugin
-mkdir -p ${GOPATH}/src/github.com/coredns/plugin/gdns
-cp ${GOPATH}/src/github.com/gozap/gdns/*.go ${GOPATH}/src/github.com/coredns/plugin/gdns
+mkdir -p ${GOPATH}/src/github.com/coredns/coredns/plugin/gdns
+cp ${GOPATH}/src/github.com/gozap/gdns/*.go ${GOPATH}/src/github.com/coredns/coredns/plugin/gdns
 
 # make
 cd ${GOPATH}/src/github.com/coredns/coredns
