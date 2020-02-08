@@ -1,10 +1,10 @@
 # gdns
 
-> gdns 是一个 CoreDNS 插件，后端对接 Etcd，以实现分布一致性的 CoreDNS 集群；插件目前只实现了相关记录的精确查找，部分记录类型尚未实现
+> gdns 是一个 CoreDNS 插件，通过将 hosts 配置存储在 etcd 中实现分布式一致性查询
 
 ## 编译安装
 
-请自行 clone CoreDNS 仓库，然后修改 `plugin.cfg` 配置文件(当前 gdns 基于 CoreDNS v1.6.4 开发)，并执行 `make` 既可
+请自行 clone CoreDNS 仓库，然后修改 `plugin.cfg` 配置文件(当前 gdns 基于 CoreDNS v1.6.7 开发)，并执行 `make` 既可
 
 **`plugin.cfg` 内 gdns 插入顺序影响 gdns 插件执行顺序，以下配置样例中 gdns 插件将优先 etcd 插件捕获 dns 请求，并根据 `fallthrough` 配置决定解析失败时是否继续穿透**
 
@@ -78,31 +78,35 @@ sign:sign
 
 ## 插件配置
 
-gdns 插件配置与 [etcd](https://coredns.io/plugins/etcd/) 插件配置完全相同，并且移除了 etcd 内无效配置(已经无效，但允许写入的字段)
+gdns 插件完整配置格式如下:
+
+```sh
+gdns [ZONES...] {
+    [INLINE]
+    ttl SECONDS
+    no_reverse
+    fallthrough [ZONES...]
+    key ETCD_KEY
+    endpoint ETCD_ENDPOINT...
+    credentials ETCD_USERNAME ETCD_PASSWORD
+    tls ETCD_CERT ETCD_KEY ETCD_CACERT
+    timeout ETCD_TIMEOUT
+}
+```
+
+其中 key 默认为 `gdns`，timeout 默认为 3s，以下是一段样例配置:
+
+```sh
+gdns . {
+    fallthrough .
+    key gdns
+    timeout 5s
+    tls /tmp/test_etcd_ssl/etcd.pem /tmp/test_etcd_ssl/etcd-key.pem /tmp/test_etcd_ssl/etcd-root-ca.pem
+    endpoint https://172.16.11.115:2379 https://172.16.11.116:2379 https://172.16.11.117:2379
+}
+```
 
 ## 数据格式
 
-请求到达 gdns 后，gdns 会向 Etcd 查询相关 key，并使用 value 反序列化后得到结果
-
-**key 格式: `GDNS_PATHPREFIX + / + DOMAIN_NAME`**
-
-- GDNS_PATHPREFIX: 默认为 `/gdns`
-- DOMAIN_NAME: 域名, 例如 `test.com`
-
-Example: `/gdns/test.com`
-
-**value 格式: `'{"QType":[{"domain":"DOMAIN","sub_domain":"SUB_DOMAIN","type":QTYPE,"record":"RECORD","ttl":TTL}]}'`**
-
-- QType: 查询类型(uint16), 取值参考 [miekg/dns](https://github.com/miekg/dns/blob/40eab7a196d1397aa407c5c9b726fc48b1a9e9e8/types.go#L26)
-- domain: 基础域名(string)，例如 `example.com`
-- sub_domain: 子域名(string)，例如 `test`
-- record: 具体记录(string), 字符串内容根据实际 DNS 请求确定，例如 NS 请求字符串必须为 FQDN
-- ttl: Time to live(uint32)
-
-Example: `{"1":[{"domain":"example.com","sub_domain":"test","type":1,"record":"1.2.3.4","ttl":600}],"28":[{"domain":"example.com","sub_domain":"ipv6","type":28,"record":"2001:0db8:3c4d:0015:0000:0000:1a2f:1a2b","ttl":600}]}`
-
-**etcdctl 命令样例**
-
-```shell script
-etcdctl put /gdns/example.com '{"1":[{"domain":"example.com","sub_domain":"test","type":1,"record":"1.2.3.4","ttl":600}],"28":[{"domain":"example.com","sub_domain":"ipv6","type":28,"record":"2001:0db8:3c4d:0015:0000:0000:1a2f:1a2b","ttl":600}]}'
-```
+请求到达 gdns 后，gdns 会向 Etcd 查询相关 key，并使用 value 作为标准的 hosts 文本进行解析；
+所以如果想更新解析只需要将 hosts 文本数据写入 Etcd 既可；gdns 通过 watch api 实时观测并自动重载。
