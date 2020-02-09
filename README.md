@@ -8,7 +8,7 @@
 
 **`plugin.cfg` 内 etcdhosts 插入顺序影响 etcdhosts 插件执行顺序，以下配置样例中 etcdhosts 插件将优先 hosts 插件捕获 dns 请求，并根据 `fallthrough` 配置决定解析失败时是否继续穿透**
 
-```shell script
+```diff
 # Directives are registered in the order they should be
 # executed.
 #
@@ -55,7 +55,7 @@ rewrite:rewrite
 dnssec:dnssec
 autopath:autopath
 template:template
-etcdhosts:etcdhosts
++etcdhosts:etcdhosts
 hosts:hosts
 route53:route53
 azure:azure
