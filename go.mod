@@ -1,4 +1,4 @@
-module github.com/gozap/gdns
+module github.com/gozap/etcdhosts
 
 go 1.13
 

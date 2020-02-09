@@ -17,9 +17,9 @@ import (
 	"github.com/caddyserver/caddy"
 )
 
-var log = clog.NewWithPlugin("gdns")
+var log = clog.NewWithPlugin("etcdhosts")
 
-func init() { plugin.Register("gdns", setup) }
+func init() { plugin.Register("etcdhosts", setup) }
 
 func periodicHostsUpdate(h *Hosts) chan bool {
 	parseChan := make(chan bool)
@@ -31,7 +31,7 @@ func periodicHostsUpdate(h *Hosts) chan bool {
 			case <-parseChan:
 				return
 			case <-watchCh:
-				log.Info("gdns reloading...")
+				log.Info("etcdhosts reloading...")
 				h.readHosts()
 			}
 		}
@@ -42,7 +42,7 @@ func periodicHostsUpdate(h *Hosts) chan bool {
 func setup(c *caddy.Controller) error {
 	h, err := hostsParse(c)
 	if err != nil {
-		return plugin.Error("gdns", err)
+		return plugin.Error("etcdhosts", err)
 	}
 
 	parseChan := periodicHostsUpdate(&h)
@@ -170,7 +170,7 @@ func hostsParse(c *caddy.Controller) (Hosts, error) {
 
 	// default etcd key
 	if h.etcdHostsKey == "" {
-		h.etcdHostsKey = "/gdns"
+		h.etcdHostsKey = "/etcdhosts"
 	}
 
 	// default etcd client timeout

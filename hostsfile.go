@@ -277,7 +277,7 @@ func (h *Hostsfile) LookupStaticAddr(addr string) []string {
 var (
 	hostsEntries = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: plugin.Namespace,
-		Subsystem: "gdns",
+		Subsystem: "etcdhosts",
 		Name:      "entries_count",
 		Help:      "The combined number of entries in hosts and Corefile.",
 	}, []string{})
