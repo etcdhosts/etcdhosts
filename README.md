@@ -80,13 +80,13 @@ sign:sign
 
 ```sh
 # clone source 
-mkdir -p ${GOPATH}/src/github.com/coredns ${GOPATH}/src/github.com/gozap
+mkdir -p ${GOPATH}/src/github.com/coredns ${GOPATH}/src/github.com/ytpay
 git clone https://github.com/coredns/coredns.git ${GOPATH}/src/github.com/coredns/coredns
-git clone https://github.com/Gozap/etcdhosts.git ${GOPATH}/src/github.com/gozap/etcdhosts
+git clone https://github.com/ytpay/etcdhosts.git ${GOPATH}/src/github.com/ytpay/etcdhosts
 
 # copy plugin
 mkdir -p ${GOPATH}/src/github.com/coredns/coredns/plugin/etcdhosts
-cp ${GOPATH}/src/github.com/gozap/etcdhosts/*.go ${GOPATH}/src/github.com/coredns/coredns/plugin/etcdhosts
+cp ${GOPATH}/src/github.com/ytpay/etcdhosts/*.go ${GOPATH}/src/github.com/coredns/coredns/plugin/etcdhosts
 
 # make
 cd ${GOPATH}/src/github.com/coredns/coredns
