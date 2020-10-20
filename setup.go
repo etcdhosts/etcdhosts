@@ -10,7 +10,6 @@ import (
 
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
-	"github.com/coredns/coredns/plugin/metrics"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
 	mwtls "github.com/coredns/coredns/plugin/pkg/tls"
 
@@ -49,11 +48,6 @@ func setup(c *caddy.Controller) error {
 
 	c.OnStartup(func() error {
 		h.readHosts()
-		return nil
-	})
-
-	c.OnStartup(func() error {
-		metrics.MustRegister(c, hostsEntries)
 		return nil
 	})
 
