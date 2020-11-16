@@ -13,7 +13,7 @@ import (
 	clog "github.com/coredns/coredns/plugin/pkg/log"
 	mwtls "github.com/coredns/coredns/plugin/pkg/tls"
 
-	"github.com/caddyserver/caddy"
+	"github.com/coredns/caddy"
 )
 
 var log = clog.NewWithPlugin("etcdhosts")
