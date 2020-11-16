@@ -1,4 +1,4 @@
-package hosts
+package etcdhosts
 
 import (
 	"context"

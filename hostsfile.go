@@ -4,7 +4,7 @@
 
 // This file is a modified version of net/hosts.go from the golang repo
 
-package hosts
+package etcdhosts
 
 import (
 	"bufio"
