@@ -2,13 +2,23 @@
 
 > etcdhosts 是一个 CoreDNS 插件，通过将 hosts 配置存储在 etcd 中实现分布式一致性查询。
 
+<!--ts-->
+   * [etcdhosts](#etcdhosts)
+      * [一、编译安装](#一编译安装)
+         * [1.1、Docker 编译](#11docker-编译)
+         * [1.2、手动编译](#12手动编译)
+         * [1.3、扩展编译说明](#13扩展编译说明)
+      * [二、插件配置](#二插件配置)
+      * [三、数据格式](#三数据格式)
+<!--te-->
+
 ## 一、编译安装
 
-#### 1.1、Docker 编译
+### 1.1、Docker 编译
 
 在安装好 Docker 的 Linux 机器上，直接执行本项目下的 `build.sh` 脚本即可；编译完成后将在 build 目录下生成可执行文件压缩包。
 
-#### 1.2、手动编译
+### 1.2、手动编译
 
 请自行 clone CoreDNS 仓库，然后修改 `plugin.cfg` 配置文件(当前 etcdhosts 基于 CoreDNS v1.6.7 开发)，并执行 `make` 既可
 
@@ -99,7 +109,7 @@ make -f Makefile.release build tar DOCKER=coredns
 
 编译完成后可在 release 目录下找到编译好的文件。
 
-#### 1.3、扩展编译说明
+### 1.3、扩展编译说明
 
 默认情况下 `build.sh` 将会挂载 `.compile.sh` 进行编译，`.compile.sh` 为真正的编译命令；默认编译时脚本
 将使用 CoreDNS 版本 tag 来获取 etcdhosts 版本，但是 etcdhosts 插件版本发布可能不一定完全覆盖 CoreDNS 版本；
