@@ -118,7 +118,7 @@ make -f Makefile.release build tar DOCKER=coredns
 # make
 cd ${GOPATH}/src/github.com/coredns/coredns
 git checkout tags/${VERSION} -b ${VERSION}
--go get github.com/ytpay/etcdhosts@${VERSION}
+- go get github.com/ytpay/etcdhosts@${VERSION}
 sed -i '/^hosts:hosts/i\etcdhosts:github.com/ytpay/etcdhosts' plugin.cfg
 make -f Makefile.release build tar DOCKER=coredns
 ```
