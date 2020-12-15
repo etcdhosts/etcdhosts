@@ -1,4 +1,4 @@
-module github.com/etcdhosts/etcdhosts
+module github.com/etcdhosts/etcdhosts/v1
 
 go 1.15
 
