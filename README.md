@@ -70,7 +70,7 @@ rewrite:rewrite
 dnssec:dnssec
 autopath:autopath
 template:template
-+etcdhosts:github.com/ytpay/etcdhosts
++etcdhosts:github.com/etcdhosts/etcdhosts
 hosts:hosts
 route53:route53
 azure:azure
@@ -101,8 +101,8 @@ git clone https://github.com/coredns/coredns.git ${GOPATH}/src/github.com/coredn
 # make
 cd ${GOPATH}/src/github.com/coredns/coredns
 git checkout tags/${VERSION} -b ${VERSION}
-go get github.com/ytpay/etcdhosts@${VERSION}
-sed -i '/^hosts:hosts/i\etcdhosts:github.com/ytpay/etcdhosts' plugin.cfg
+go get github.com/etcdhosts/etcdhosts@${VERSION}
+sed -i '/^hosts:hosts/i\etcdhosts:github.com/etcdhosts/etcdhosts' plugin.cfg
 make -f Makefile.release build tar DOCKER=coredns
 ```
 
@@ -118,8 +118,8 @@ make -f Makefile.release build tar DOCKER=coredns
 # make
 cd ${GOPATH}/src/github.com/coredns/coredns
 git checkout tags/${VERSION} -b ${VERSION}
-- go get github.com/ytpay/etcdhosts@${VERSION}
-sed -i '/^hosts:hosts/i\etcdhosts:github.com/ytpay/etcdhosts' plugin.cfg
+- go get github.com/etcdhosts/etcdhosts@${VERSION}
+sed -i '/^hosts:hosts/i\etcdhosts:github.com/etcdhosts/etcdhosts' plugin.cfg
 make -f Makefile.release build tar DOCKER=coredns
 ```
 
