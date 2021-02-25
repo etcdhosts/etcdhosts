@@ -6,5 +6,5 @@ rm -rf build
 
 docker run --rm -it -e VERSION=${VERSION} \
                     -v `pwd`/.compile.sh:/compile.sh \
-                    -v `pwd`/build:/build \
+                    -v `pwd`/dist:/build \
                     golang:1.16 /compile.sh
