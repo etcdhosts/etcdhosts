@@ -9,15 +9,10 @@ package etcdhosts
 import (
 	"bufio"
 	"bytes"
-	"context"
-	"crypto/tls"
 	"io"
 	"net"
 	"strings"
 	"sync"
-	"time"
-
-	"go.etcd.io/etcd/clientv3"
 
 	"github.com/coredns/coredns/plugin"
 )
@@ -83,8 +78,8 @@ func (h *Map) Len() int {
 	return l
 }
 
-// Hostsfile contains known host entries.
-type Hostsfile struct {
+// HostsFile contains known host entries.
+type HostsFile struct {
 	sync.RWMutex
 
 	// list of zones we are authoritative for
@@ -96,68 +91,36 @@ type Hostsfile struct {
 	// inline saves the hosts file that is inlined in a Corefile.
 	inline *Map
 
-	// etcd tls config
-	etcdTLSConfig *tls.Config
-
-	// etcd user and passwd
-	etcdUserName string
-	etcdPassword string
-
-	// etcd endpoints
-	etcdEndpoints []string
-
-	// etcd v3 client
-	etcdClient *clientv3.Client
-
-	// etcd client timeout
-	etcdTimeout time.Duration
-
-	// etcd key
-	etcdHostsKey string
-
-	// etcdKeyVersion are only read and modified by a single goroutine
-	etcdKeyVersion int64
+	// version are only read and modified by a single goroutine
+	version int64
 
 	options *options
 }
 
 // readHosts determines if the cached data needs to be updated based on the size and modification time of the hostsfile.
-func (h *Hostsfile) readHosts() {
-
-	ctx, cancel := context.WithTimeout(context.Background(), h.etcdTimeout)
-	defer cancel()
-	getResp, err := h.etcdClient.Get(ctx, h.etcdHostsKey)
-	if err != nil {
-		log.Errorf("failed to get etcd key [%s]: %s", h.etcdHostsKey, err.Error())
-		return
-	}
-
-	if len(getResp.Kvs) != 1 {
-		log.Errorf("invalid etcd response: %d", len(getResp.Kvs))
+func (h *HostsFile) readHosts(hosts []byte, version int64) {
+	if h.version == version {
 		return
 	}
 
 	h.RLock()
-	version := h.etcdKeyVersion
+	version = h.version
 	h.RUnlock()
 
 	// if version not changed, skip reading
-	if version == getResp.Kvs[0].Version {
-		return
-	}
 
-	newMap := h.parse(bytes.NewReader(getResp.Kvs[0].Value))
+	newMap := h.parse(bytes.NewReader(hosts))
 	log.Debugf("Parsed hosts file into %d entries", newMap.Len())
 
 	h.Lock()
 	h.hmap = newMap
 	// Update the data cache.
-	h.etcdKeyVersion = getResp.Kvs[0].Version
+	h.version = version
 	hostsEntries.WithLabelValues().Set(float64(h.inline.Len() + h.hmap.Len()))
 	h.Unlock()
 }
 
-func (h *Hostsfile) initInline(inline []string) {
+func (h *HostsFile) initInline(inline []string) {
 	if len(inline) == 0 {
 		return
 	}
@@ -166,7 +129,7 @@ func (h *Hostsfile) initInline(inline []string) {
 }
 
 // Parse reads the hostsfile and populates the byName and addr maps.
-func (h *Hostsfile) parse(r io.Reader) *Map {
+func (h *HostsFile) parse(r io.Reader) *Map {
 	hmap := newMap()
 
 	scanner := bufio.NewScanner(r)
@@ -217,7 +180,7 @@ func (h *Hostsfile) parse(r io.Reader) *Map {
 }
 
 // lookupStaticHost looks up the IP addresses for the given host from the hosts file.
-func (h *Hostsfile) lookupStaticHost(m map[string][]net.IP, host string) []net.IP {
+func (h *HostsFile) lookupStaticHost(m map[string][]net.IP, host string) []net.IP {
 	h.RLock()
 	defer h.RUnlock()
 
@@ -235,7 +198,7 @@ func (h *Hostsfile) lookupStaticHost(m map[string][]net.IP, host string) []net.I
 }
 
 // LookupStaticHostV4 looks up the IPv4 addresses for the given host from the hosts file.
-func (h *Hostsfile) LookupStaticHostV4(host string) []net.IP {
+func (h *HostsFile) LookupStaticHostV4(host string) []net.IP {
 	host = strings.ToLower(host)
 	ip1 := h.lookupStaticHost(h.hmap.name4, host)
 	ip2 := h.lookupStaticHost(h.inline.name4, host)
@@ -243,7 +206,7 @@ func (h *Hostsfile) LookupStaticHostV4(host string) []net.IP {
 }
 
 // LookupStaticHostV6 looks up the IPv6 addresses for the given host from the hosts file.
-func (h *Hostsfile) LookupStaticHostV6(host string) []net.IP {
+func (h *HostsFile) LookupStaticHostV6(host string) []net.IP {
 	host = strings.ToLower(host)
 	ip1 := h.lookupStaticHost(h.hmap.name6, host)
 	ip2 := h.lookupStaticHost(h.inline.name6, host)
@@ -251,7 +214,7 @@ func (h *Hostsfile) LookupStaticHostV6(host string) []net.IP {
 }
 
 // LookupStaticAddr looks up the hosts for the given address from the hosts file.
-func (h *Hostsfile) LookupStaticAddr(addr string) []string {
+func (h *HostsFile) LookupStaticAddr(addr string) []string {
 	addr = parseIP(addr).String()
 	if addr == "" {
 		return nil

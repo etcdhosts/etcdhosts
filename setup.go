@@ -6,8 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"go.etcd.io/etcd/clientv3"
-
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
@@ -20,18 +18,35 @@ var log = clog.NewWithPlugin("etcdhosts")
 
 func init() { plugin.Register("etcdhosts", setup) }
 
-func periodicHostsUpdate(h *Hosts) chan bool {
+func periodicHostsUpdate(h *EtcdHosts) chan bool {
 	parseChan := make(chan bool)
 
 	go func() {
-		watchCh := h.etcdClient.Watch(context.Background(), h.etcdHostsKey)
+		watchCh := h.etcdClient.Watch(context.Background(), h.etcdConfig.HostsKey)
+
 		for {
 			select {
 			case <-parseChan:
+				_ = h.etcdClient.Close()
 				return
-			case <-watchCh:
-				log.Info("etcdhosts reloading...")
-				h.readHosts()
+			case _, ok := <-watchCh:
+				if ok {
+					log.Info("etcdhosts reloading...")
+					h.readEtcdHosts()
+				} else {
+					log.Warning("etcd client is closed, try to reconnect...")
+					time.Sleep(2 * time.Second)
+					cli, err := h.etcdConfig.NewClient()
+					if err != nil {
+						log.Errorf("etcd client is closed, reconnect failed: %w", err)
+						continue
+					}
+					h.RLock()
+					h.etcdClient = cli
+					watchCh = h.etcdClient.Watch(context.Background(), h.etcdConfig.HostsKey)
+					h.Unlock()
+					log.Warning("etcd client is closed, reconnect success...")
+				}
 			}
 		}
 	}()
@@ -47,13 +62,12 @@ func setup(c *caddy.Controller) error {
 	parseChan := periodicHostsUpdate(&h)
 
 	c.OnStartup(func() error {
-		h.readHosts()
+		h.readEtcdHosts()
 		return nil
 	})
 
 	c.OnShutdown(func() error {
 		close(parseChan)
-		_ = h.etcdClient.Close()
 		return nil
 	})
 
@@ -65,9 +79,9 @@ func setup(c *caddy.Controller) error {
 	return nil
 }
 
-func hostsParse(c *caddy.Controller) (Hosts, error) {
-	h := Hosts{
-		Hostsfile: &Hostsfile{
+func hostsParse(c *caddy.Controller) (EtcdHosts, error) {
+	h := EtcdHosts{
+		HostsFile: &HostsFile{
 			hmap:    newMap(),
 			inline:  newMap(),
 			options: newOptions(),
@@ -117,31 +131,31 @@ func hostsParse(c *caddy.Controller) (Hosts, error) {
 				remaining := c.RemainingArgs()
 				tlsConfig, err := mwtls.NewTLSConfigFromArgs(remaining...)
 				if err != nil {
-					return h, c.Errf("failed to load etcd tls config: %s", err.Error())
+					return h, c.Errf("failed to load etcdConfig tls config: %s", err.Error())
 				}
-				h.etcdTLSConfig = tlsConfig
+				h.etcdConfig.TLSConfig = tlsConfig
 			case "endpoint":
 				remaining := c.RemainingArgs()
 				if len(remaining) == 0 {
 					return h, c.ArgErr()
 				}
-				h.etcdEndpoints = remaining
+				h.etcdConfig.Endpoints = remaining
 			case "timeout":
 				remaining := c.RemainingArgs()
 				if len(remaining) != 1 {
-					return h, c.Errf("etcd client timeout needs a duration")
+					return h, c.Errf("etcdConfig client timeout needs a duration")
 				}
 				timeout, err := time.ParseDuration(remaining[0])
 				if err != nil {
-					return h, c.Errf("invalid duration for etcd client timeout '%s'", remaining[0])
+					return h, c.Errf("invalid duration for etcdConfig client timeout '%s'", remaining[0])
 				}
-				h.etcdTimeout = timeout
+				h.etcdConfig.Timeout = timeout
 			case "key":
 				remaining := c.RemainingArgs()
 				if len(remaining) != 1 {
-					return h, c.Errf("etcd hosts key needs a string")
+					return h, c.Errf("etcdConfig hosts key needs a string")
 				}
-				h.etcdHostsKey = remaining[0]
+				h.etcdConfig.HostsKey = remaining[0]
 			case "credentials":
 				remaining := c.RemainingArgs()
 				if len(remaining) == 0 {
@@ -150,7 +164,7 @@ func hostsParse(c *caddy.Controller) (Hosts, error) {
 				if len(remaining) != 2 {
 					return h, c.Errf("credentials requires 2 arguments, username and password")
 				}
-				h.etcdUserName, h.etcdPassword = remaining[0], remaining[1]
+				h.etcdConfig.UserName, h.etcdConfig.Password = remaining[0], remaining[1]
 			default:
 				if len(h.Fall.Zones) == 0 {
 					line := strings.Join(append([]string{c.Val()}, c.RemainingArgs()...), " ")
@@ -162,25 +176,19 @@ func hostsParse(c *caddy.Controller) (Hosts, error) {
 		}
 	}
 
-	// default etcd key
-	if h.etcdHostsKey == "" {
-		h.etcdHostsKey = "/etcdhosts"
+	// default etcdConfig key
+	if h.etcdConfig.HostsKey == "" {
+		h.etcdConfig.HostsKey = "/etcdhosts"
 	}
 
-	// default etcd client timeout
-	if h.etcdTimeout == 0 {
-		h.etcdTimeout = 3 * time.Second
+	// default etcdConfig client timeout
+	if h.etcdConfig.Timeout == 0 {
+		h.etcdConfig.Timeout = 3 * time.Second
 	}
 
-	cli, err := clientv3.New(clientv3.Config{
-		Username:    h.etcdUserName,
-		Password:    h.etcdPassword,
-		Endpoints:   h.etcdEndpoints,
-		DialTimeout: 5 * time.Second,
-		TLS:         h.etcdTLSConfig,
-	})
+	cli, err := h.etcdConfig.NewClient()
 	if err != nil {
-		return h, c.Errf("failed to create etcd client: %s", err.Error())
+		log.Fatalf("failed to create etcdConfig client: %w", err)
 	}
 	h.etcdClient = cli
 

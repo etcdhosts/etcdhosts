@@ -4,6 +4,8 @@ import (
 	"context"
 	"net"
 
+	"go.etcd.io/etcd/clientv3"
+
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/pkg/dnsutil"
 	"github.com/coredns/coredns/plugin/pkg/fall"
@@ -12,16 +14,17 @@ import (
 	"github.com/miekg/dns"
 )
 
-// Hosts is the plugin handler
-type Hosts struct {
+// EtcdHosts is the plugin handler
+type EtcdHosts struct {
 	Next plugin.Handler
-	*Hostsfile
-
-	Fall fall.F
+	*HostsFile
+	etcdConfig *EtcdConfig
+	etcdClient *clientv3.Client
+	Fall       fall.F
 }
 
 // ServeDNS implements the plugin.Handle interface.
-func (h Hosts) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
+func (h EtcdHosts) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
 	state := request.Request{W: w, Req: r}
 	qname := state.Name()
 
@@ -72,7 +75,7 @@ func (h Hosts) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (
 	return dns.RcodeSuccess, nil
 }
 
-func (h Hosts) otherRecordsExist(qname string) bool {
+func (h EtcdHosts) otherRecordsExist(qname string) bool {
 	if len(h.LookupStaticHostV4(qname)) > 0 {
 		return true
 	}
@@ -83,7 +86,7 @@ func (h Hosts) otherRecordsExist(qname string) bool {
 }
 
 // Name implements the plugin.Handle interface.
-func (h Hosts) Name() string { return "etcdhosts" }
+func (h EtcdHosts) Name() string { return "etcdhosts" }
 
 // a takes a slice of net.IPs and returns a slice of A RRs.
 func a(zone string, ttl uint32, ips []net.IP) []dns.RR {
@@ -110,7 +113,7 @@ func aaaa(zone string, ttl uint32, ips []net.IP) []dns.RR {
 }
 
 // ptr takes a slice of host names and filters out the ones that aren't in Origins, if specified, and returns a slice of PTR RRs.
-func (h *Hosts) ptr(zone string, ttl uint32, names []string) []dns.RR {
+func (h *EtcdHosts) ptr(zone string, ttl uint32, names []string) []dns.RR {
 	answers := make([]dns.RR, len(names))
 	for i, n := range names {
 		r := new(dns.PTR)
@@ -119,4 +122,22 @@ func (h *Hosts) ptr(zone string, ttl uint32, names []string) []dns.RR {
 		answers[i] = r
 	}
 	return answers
+}
+
+func (h *EtcdHosts) readEtcdHosts() {
+	ctx, cancel := context.WithTimeout(context.Background(), h.etcdConfig.Timeout)
+	defer cancel()
+
+	getResp, err := h.etcdClient.Get(ctx, h.etcdConfig.HostsKey)
+	if err != nil {
+		log.Errorf("failed to get etcdConfig key [%s]: %s", h.etcdConfig.HostsKey, err.Error())
+		return
+	}
+
+	if len(getResp.Kvs) != 1 {
+		log.Errorf("invalid etcdConfig response: %d", len(getResp.Kvs))
+		return
+	}
+
+	h.readHosts(getResp.Kvs[0].Value, getResp.Kvs[0].Version)
 }
