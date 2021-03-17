@@ -18,48 +18,13 @@ var log = clog.NewWithPlugin("etcdhosts")
 
 func init() { plugin.Register("etcdhosts", setup) }
 
-func periodicHostsUpdate(h *EtcdHosts) chan bool {
-	parseChan := make(chan bool)
-
-	go func() {
-		watchCh := h.etcdClient.Watch(context.Background(), h.etcdConfig.HostsKey)
-
-		for {
-			select {
-			case <-parseChan:
-				_ = h.etcdClient.Close()
-				return
-			case _, ok := <-watchCh:
-				if ok {
-					log.Info("etcdhosts reloading...")
-					h.readEtcdHosts()
-				} else {
-					log.Warning("etcd client is closed, try to reconnect...")
-					time.Sleep(2 * time.Second)
-					cli, err := h.etcdConfig.NewClient()
-					if err != nil {
-						log.Errorf("etcd client is closed, reconnect failed: %w", err)
-						continue
-					}
-					h.RLock()
-					h.etcdClient = cli
-					watchCh = h.etcdClient.Watch(context.Background(), h.etcdConfig.HostsKey)
-					h.Unlock()
-					log.Warning("etcd client is closed, reconnect success...")
-				}
-			}
-		}
-	}()
-	return parseChan
-}
-
 func setup(c *caddy.Controller) error {
 	h, err := hostsParse(c)
 	if err != nil {
 		return plugin.Error("etcdhosts", err)
 	}
 
-	parseChan := periodicHostsUpdate(&h)
+	parseChan := h.periodicHostsUpdate()
 
 	c.OnStartup(func() error {
 		h.readEtcdHosts()
@@ -193,6 +158,40 @@ func hostsParse(c *caddy.Controller) (EtcdHosts, error) {
 	h.etcdClient = cli
 
 	h.initInline(inline)
-
 	return h, nil
+}
+
+func (h *EtcdHosts) periodicHostsUpdate() chan bool {
+	parseChan := make(chan bool)
+
+	go func() {
+	StartWatch:
+
+		watchCh := h.etcdClient.Watch(context.Background(), h.etcdConfig.HostsKey)
+		for {
+			select {
+			case <-parseChan:
+				return
+			case _, ok := <-watchCh:
+				if ok {
+					log.Info("etcdhosts reloading...")
+					h.readEtcdHosts()
+				} else {
+					log.Warning("etcd client is closed, try to reconnect...")
+					time.Sleep(2 * time.Second)
+					cli, err := h.etcdConfig.NewClient()
+					if err != nil {
+						log.Errorf("etcd client is closed, reconnect failed: %w", err)
+						continue
+					}
+					h.Lock()
+					h.etcdClient = cli
+					h.Unlock()
+					log.Warning("etcd client is closed, reconnect success...")
+					goto StartWatch
+				}
+			}
+		}
+	}()
+	return parseChan
 }
