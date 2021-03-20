@@ -179,19 +179,19 @@ func (h *EtcdHosts) periodicHostsUpdate() chan bool {
 
 				err := h.etcdClient.Sync(ctx)
 				if err != nil {
-					log.Warningf("etcd client sync error(%s), try to reconnect...", err.Error())
+					log.Warningf("etcdhosts client sync error(%s), try to reconnect...", err.Error())
 					cli, err := h.etcdConfig.NewClient()
 					if err != nil {
-						log.Errorf("etcd client is closed, reconnect failed: %w", err)
+						log.Errorf("etcdhosts client reconnect failed: %w", err)
 						continue
 					}
 					h.Lock()
+					_ = h.etcdClient.Close()
 					h.etcdClient = cli
 					h.Unlock()
-					log.Warning("etcd client is closed, reconnect success...")
 					goto StartWatch
 				}
-				log.Info("etcd client endpoints sync success")
+				log.Info("etcdhosts client endpoints sync success...")
 			case _, ok := <-watchCh:
 				if ok {
 					log.Info("etcdhosts reloading...")
