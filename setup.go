@@ -190,6 +190,7 @@ func (h *EtcdHosts) periodicHostsUpdate() chan bool {
 					log.Warning("etcd client is closed, reconnect success...")
 					goto StartWatch
 				}
+				log.Info("etcd client endpoints sync success")
 			case _, ok := <-watchCh:
 				if ok {
 					log.Info("etcdhosts reloading...")

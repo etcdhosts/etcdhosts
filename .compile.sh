@@ -13,7 +13,7 @@ git clone https://github.com/coredns/coredns.git ${GOPATH}/src/github.com/coredn
 # make
 cd ${GOPATH}/src/github.com/coredns/coredns
 git checkout tags/${VERSION} -b ${VERSION}
-go get github.com/etcdhosts/etcdhosts@latest
+go get github.com/etcdhosts/etcdhosts@master
 sed -i '/^hosts:hosts/i\etcdhosts:github.com/etcdhosts/etcdhosts' plugin.cfg
 make -f Makefile gen
 make -f Makefile.release build tar DOCKER=coredns
