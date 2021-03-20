@@ -154,14 +154,14 @@ func hostsParse(c *caddy.Controller) (EtcdHosts, error) {
 
 	cli, err := h.etcdConfig.NewClient()
 	if err != nil {
-		log.Fatalf("failed to create etcdConfig client: %w", err)
+		log.Fatalf("failed to create etcdConfig client: %s", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	err = cli.Sync(ctx)
 	if err != nil {
-		log.Fatalf("failed to connect etcd server(sync error): %w", err)
+		log.Fatalf("failed to connect etcd server(sync error): %v", err)
 	}
 
 	h.etcdClient = cli
@@ -190,7 +190,7 @@ func (h *EtcdHosts) periodicHostsUpdate() chan bool {
 					log.Warningf("etcdhosts client sync error(%s), try to reconnect...", err.Error())
 					cli, err := h.etcdConfig.NewClient()
 					if err != nil {
-						log.Errorf("etcdhosts client reconnect failed: %w", err)
+						log.Errorf("etcdhosts client reconnect failed: %s", err)
 						continue
 					}
 					h.Lock()
