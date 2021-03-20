@@ -156,6 +156,14 @@ func hostsParse(c *caddy.Controller) (EtcdHosts, error) {
 	if err != nil {
 		log.Fatalf("failed to create etcdConfig client: %w", err)
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err = cli.Sync(ctx)
+	if err != nil {
+		log.Fatalf("failed to connect etcd server(sync error): %w", err)
+	}
+
 	h.etcdClient = cli
 
 	h.initInline(inline)
