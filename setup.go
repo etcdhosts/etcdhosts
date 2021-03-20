@@ -51,6 +51,7 @@ func hostsParse(c *caddy.Controller) (EtcdHosts, error) {
 			inline:  newMap(),
 			options: newOptions(),
 		},
+		etcdConfig: &EtcdConfig{},
 	}
 
 	var inline []string
