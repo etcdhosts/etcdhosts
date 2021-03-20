@@ -166,19 +166,19 @@ func (h *EtcdHosts) periodicHostsUpdate() chan bool {
 
 	go func() {
 	StartWatch:
-
+		tick := time.Tick(30 * time.Second)
 		watchCh := h.etcdClient.Watch(context.Background(), h.etcdConfig.HostsKey)
 		for {
 			select {
 			case <-parseChan:
 				return
-			case _, ok := <-watchCh:
-				if ok {
-					log.Info("etcdhosts reloading...")
-					h.readEtcdHosts()
-				} else {
-					log.Warning("etcd client is closed, try to reconnect...")
-					time.Sleep(2 * time.Second)
+			case <-tick:
+				ctx, syncCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer syncCancel()
+
+				err := h.etcdClient.Sync(ctx)
+				if err != nil {
+					log.Warningf("etcd client sync error(%s), try to reconnect...", err.Error())
 					cli, err := h.etcdConfig.NewClient()
 					if err != nil {
 						log.Errorf("etcd client is closed, reconnect failed: %w", err)
@@ -189,6 +189,11 @@ func (h *EtcdHosts) periodicHostsUpdate() chan bool {
 					h.Unlock()
 					log.Warning("etcd client is closed, reconnect success...")
 					goto StartWatch
+				}
+			case _, ok := <-watchCh:
+				if ok {
+					log.Info("etcdhosts reloading...")
+					h.readEtcdHosts()
 				}
 			}
 		}
