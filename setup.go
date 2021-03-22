@@ -199,7 +199,7 @@ func (h *EtcdHosts) periodicHostsUpdate() chan bool {
 					h.Unlock()
 					goto StartWatch
 				}
-				log.Info("etcdhosts client endpoints sync success...")
+				log.Infof("etcdhosts client endpoints sync success: %v", h.etcdClient.Endpoints())
 			case _, ok := <-watchCh:
 				if ok {
 					log.Info("etcdhosts reloading...")
