@@ -62,17 +62,7 @@ func hostsParse(c *caddy.Controller) (EtcdHosts, error) {
 		}
 		i++
 
-		origins := make([]string, len(c.ServerBlockKeys))
-		copy(origins, c.ServerBlockKeys)
-		args := c.RemainingArgs()
-		if len(args) > 0 {
-			origins = args
-		}
-
-		for i := range origins {
-			origins[i] = plugin.Host(origins[i]).Normalize()
-		}
-		h.Origins = origins
+		h.Origins = plugin.OriginsFromArgsOrServerBlock(c.RemainingArgs(), c.ServerBlockKeys)
 
 		for c.NextBlock() {
 			switch c.Val() {
