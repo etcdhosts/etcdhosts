@@ -1,0 +1,41 @@
+version: '3'
+
+tasks:
+  clean:
+    cmds:
+      - rm -rf coredns dist
+  clone-source:
+    vars:
+      VERSION: '{{default "v1.9.3" .VERSION}}'
+    cmds:
+      - task: clean
+      - mkdir dist
+      - git clone --depth 1 --branch {{.VERSION}} https://github.com/coredns/coredns.git coredns
+  add-plugin:
+    vars:
+      ROOT_DIR:
+        sh: git rev-parse --show-toplevel
+    dir: coredns
+    deps: [ clone-source ]
+    cmds:
+      - mkdir plugin/etcdhosts
+      - cp ../*.go plugin/etcdhosts
+      - |
+        {{if eq OS "darwin"}}
+        gsed -i '/^hosts:hosts/i\etcdhosts:etcdhosts' plugin.cfg
+        {{else}}
+        sed -i '/^hosts:hosts/i\etcdhosts:etcdhosts' plugin.cfg
+        {{end}}
+
+  build:
+    dir: coredns
+    cmds:
+      - make -f Makefile gen
+      - make -f Makefile.release build tar DOCKER=coredns
+      - mv release/* ../dist
+
+  default:
+    cmds:
+      - task: clone-source
+      - task: add-plugin
+      - task: build
