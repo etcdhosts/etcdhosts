@@ -21,7 +21,7 @@ func (e *EtcdConfig) NewClient() (*clientv3.Client, error) {
 		Username:    e.UserName,
 		Password:    e.Password,
 		Endpoints:   e.Endpoints,
-		DialTimeout: 5 * time.Second,
+		DialTimeout: 3 * time.Second,
 		TLS:         e.TLSConfig,
 	})
 }
