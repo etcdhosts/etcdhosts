@@ -24,7 +24,7 @@ type EtcdHosts struct {
 }
 
 // ServeDNS implements the plugin.Handle interface.
-func (h EtcdHosts) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
+func (h *EtcdHosts) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
 	state := request.Request{W: w, Req: r}
 	qname := state.Name()
 
@@ -75,7 +75,7 @@ func (h EtcdHosts) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Ms
 	return dns.RcodeSuccess, nil
 }
 
-func (h EtcdHosts) otherRecordsExist(qname string) bool {
+func (h *EtcdHosts) otherRecordsExist(qname string) bool {
 	if len(h.LookupStaticHostV4(qname)) > 0 {
 		return true
 	}
@@ -86,7 +86,7 @@ func (h EtcdHosts) otherRecordsExist(qname string) bool {
 }
 
 // Name implements the plugin.Handle interface.
-func (h EtcdHosts) Name() string { return "etcdhosts" }
+func (h *EtcdHosts) Name() string { return "etcdhosts" }
 
 // a takes a slice of net.IPs and returns a slice of A RRs.
 func a(zone string, ttl uint32, ips []net.IP) []dns.RR {
@@ -124,6 +124,7 @@ func (h *EtcdHosts) ptr(zone string, ttl uint32, names []string) []dns.RR {
 	return answers
 }
 
+// readEtcdHosts load hosts config from etcd
 func (h *EtcdHosts) readEtcdHosts() {
 	ctx, cancel := context.WithTimeout(context.Background(), h.etcdConfig.Timeout)
 	defer cancel()
@@ -140,4 +141,38 @@ func (h *EtcdHosts) readEtcdHosts() {
 	}
 
 	h.readHosts(getResp.Kvs[0].Value, getResp.Kvs[0].Version)
+}
+
+// newClient create etcd client
+func (h *EtcdHosts) newClient() error {
+	cli, err := h.etcdConfig.NewClient()
+	h.etcdClient = cli
+	return err
+}
+
+// closeClient close etcd client
+func (h *EtcdHosts) closeClient() error {
+	return h.etcdClient.Close()
+}
+
+// syncEndpoints sync etcd client endpoints
+func (h *EtcdHosts) syncEndpoints() error {
+	ctx, syncCancel := context.WithTimeout(context.Background(), h.etcdConfig.Timeout)
+	defer syncCancel()
+
+	return h.etcdClient.Sync(ctx)
+}
+
+// reconnect reconnect to etcd server
+func (h *EtcdHosts) reconnect() error {
+	cli, err := h.etcdConfig.NewClient()
+	if err != nil {
+		return err
+	}
+	h.Lock()
+	_ = h.etcdClient.Close()
+	h.etcdClient = cli
+	h.Unlock()
+
+	return nil
 }

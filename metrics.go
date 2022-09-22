@@ -13,6 +13,6 @@ var (
 		Namespace: plugin.Namespace,
 		Subsystem: "etcdhosts",
 		Name:      "entries",
-		Help:      "The combined number of entries in hosts and Corefile.",
+		Help:      "The combined number of entries in etcdhosts and Corefile.",
 	}, []string{})
 )

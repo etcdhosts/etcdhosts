@@ -44,8 +44,8 @@ func setup(c *caddy.Controller) error {
 	return nil
 }
 
-func hostsParse(c *caddy.Controller) (EtcdHosts, error) {
-	h := EtcdHosts{
+func hostsParse(c *caddy.Controller) (*EtcdHosts, error) {
+	h := &EtcdHosts{
 		HostsFile: &HostsFile{
 			hmap:    newMap(),
 			inline:  newMap(),
@@ -121,6 +121,16 @@ func hostsParse(c *caddy.Controller) (EtcdHosts, error) {
 					return h, c.Errf("credentials requires 2 arguments, username and password")
 				}
 				h.etcdConfig.UserName, h.etcdConfig.Password = remaining[0], remaining[1]
+			case "force_start":
+				remaining := c.RemainingArgs()
+				if len(remaining) != 1 {
+					return h, c.Errf("etcdConfig client force_start needs a boolean")
+				}
+				forceStart, err := strconv.ParseBool(remaining[0])
+				if err != nil {
+					return h, c.Errf("invalid boolean for etcdConfig client force_start '%s'", remaining[0])
+				}
+				h.etcdConfig.ForceStart = forceStart
 			default:
 				if len(h.Fall.Zones) == 0 {
 					line := strings.Join(append([]string{c.Val()}, c.RemainingArgs()...), " ")
@@ -142,19 +152,25 @@ func hostsParse(c *caddy.Controller) (EtcdHosts, error) {
 		h.etcdConfig.Timeout = 3 * time.Second
 	}
 
-	cli, err := h.etcdConfig.NewClient()
-	if err != nil {
-		log.Fatalf("failed to create etcdConfig client: %s", err)
+	var err error
+
+	// create etcd client
+	if err = h.newClient(); err != nil {
+		if h.etcdConfig.ForceStart {
+			log.Errorf("failed to create etcdConfig client: %s", err)
+		} else {
+			log.Fatalf("failed to create etcdConfig client: %s", err)
+		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	err = cli.Sync(ctx)
-	if err != nil {
-		log.Fatalf("failed to connect etcd server(sync error): %v", err)
+	// sync etcd client endpoints
+	if err = h.syncEndpoints(); err != nil {
+		if h.etcdConfig.ForceStart {
+			log.Errorf("failed to connect etcd server(sync error): %v", err)
+		} else {
+			log.Fatalf("failed to connect etcd server(sync error): %v", err)
+		}
 	}
-
-	h.etcdClient = cli
 
 	h.initInline(inline)
 	return h, nil
@@ -164,30 +180,25 @@ func (h *EtcdHosts) periodicHostsUpdate() chan bool {
 	parseChan := make(chan bool)
 
 	go func() {
-	StartWatch:
+	CONNECT:
+		var err error
 		tick := time.Tick(30 * time.Second)
 		watchCh := h.etcdClient.Watch(context.Background(), h.etcdConfig.HostsKey)
 		for {
 			select {
 			case <-parseChan:
+				if err = h.closeClient(); err != nil {
+					log.Errorf("etcdhosts client close failed: %s", err.Error())
+				}
 				return
 			case <-tick:
-				ctx, syncCancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer syncCancel()
-
-				err := h.etcdClient.Sync(ctx)
-				if err != nil {
-					log.Warningf("etcdhosts client sync error(%s), try to reconnect...", err.Error())
-					cli, err := h.etcdConfig.NewClient()
-					if err != nil {
+				if err = h.syncEndpoints(); err != nil {
+					log.Errorf("etcdhosts client sync error(%s), try to reconnect...", err.Error())
+					if err = h.reconnect(); err != nil {
 						log.Errorf("etcdhosts client reconnect failed: %s", err)
 						continue
 					}
-					h.Lock()
-					_ = h.etcdClient.Close()
-					h.etcdClient = cli
-					h.Unlock()
-					goto StartWatch
+					goto CONNECT
 				}
 				log.Infof("etcdhosts client endpoints sync success: %v", h.etcdClient.Endpoints())
 			case _, ok := <-watchCh:

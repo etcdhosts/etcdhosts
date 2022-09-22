@@ -6,7 +6,7 @@ tasks:
       - rm -rf coredns dist
   clone-source:
     vars:
-      VERSION: '{{default "v1.9.3" .VERSION}}'
+      VERSION: '{{default "v1.10.0" .VERSION}}'
     cmds:
       - task: clean
       - mkdir dist

@@ -8,20 +8,21 @@ import (
 )
 
 type EtcdConfig struct {
-	UserName  string
-	Password  string
-	Endpoints []string
-	Timeout   time.Duration
-	TLSConfig *tls.Config
-	HostsKey  string
+	UserName   string
+	Password   string
+	Endpoints  []string
+	Timeout    time.Duration
+	TLSConfig  *tls.Config
+	HostsKey   string
+	ForceStart bool
 }
 
-func (e *EtcdConfig) NewClient() (*clientv3.Client, error) {
+func (c *EtcdConfig) NewClient() (*clientv3.Client, error) {
 	return clientv3.New(clientv3.Config{
-		Username:    e.UserName,
-		Password:    e.Password,
-		Endpoints:   e.Endpoints,
+		Username:    c.UserName,
+		Password:    c.Password,
+		Endpoints:   c.Endpoints,
 		DialTimeout: 3 * time.Second,
-		TLS:         e.TLSConfig,
+		TLS:         c.TLSConfig,
 	})
 }
