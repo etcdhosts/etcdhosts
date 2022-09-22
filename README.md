@@ -69,7 +69,7 @@ etcdhosts . {
 }
 ```
 
-**默认情况下, etcdhosts 插件在首次启动时如果无法连接 Etcd 则会导致 CoreDNS 启动失败, ** 这是有意为之, 但考虑到故障恢复
+**默认情况下, etcdhosts 插件在首次启动时如果无法连接 Etcd 则会导致 CoreDNS 启动失败,** 这是有意为之, 但考虑到故障恢复
 等问题, 目前增加了 `force_start` 配置用于控制是否允许强制启动; **当配置为 `true` 时 etcdhosts 插件将忽略 etcd 链接错误
 并每 `timeout` 时间进行一次重连.** 在运行期间如果 Etcd 崩溃(节点全挂)则 etcdhosts 仍然提供已缓存的 hosts 配置, 并一直
 进行重连尝试直至成功链接.
