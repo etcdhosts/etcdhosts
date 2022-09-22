@@ -183,6 +183,14 @@ func (h *EtcdHosts) periodicHostsUpdate() chan bool {
 	CONNECT:
 		var err error
 		tick := time.Tick(30 * time.Second)
+		if h.etcdClient == nil {
+			for range tick {
+				if err = h.reconnect(); err != nil {
+					log.Errorf("etcdhosts client reconnect failed: %s", err)
+				}
+				break
+			}
+		}
 		watchCh := h.etcdClient.Watch(context.Background(), h.etcdConfig.HostsKey)
 		for {
 			select {
