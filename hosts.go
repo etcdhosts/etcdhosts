@@ -131,22 +131,26 @@ func (h *EtcdHosts) readEtcdHosts() {
 
 	getResp, err := h.etcdClient.Get(ctx, h.etcdConfig.HostsKey)
 	if err != nil {
-		log.Errorf("failed to get etcdConfig key [%s]: %s", h.etcdConfig.HostsKey, err.Error())
+		log.Errorf("failed to get etcd key [%s]: %s", h.etcdConfig.HostsKey, err.Error())
 		return
 	}
 
 	if len(getResp.Kvs) != 1 {
-		log.Errorf("invalid etcdConfig response: %d", len(getResp.Kvs))
+		log.Errorf("invalid etcd response: %d", len(getResp.Kvs))
 		return
 	}
 
 	h.readHosts(getResp.Kvs[0].Value, getResp.Kvs[0].Version)
 }
 
-// newClient create etcd client
-func (h *EtcdHosts) newClient() error {
+// initEtcdClient create etcd client
+func (h *EtcdHosts) initEtcdClient() error {
 	cli, err := h.etcdConfig.NewClient()
-	h.etcdClient = cli
+	if err == nil {
+		h.Lock()
+		h.etcdClient = cli
+		h.Unlock()
+	}
 	return err
 }
 
@@ -161,18 +165,4 @@ func (h *EtcdHosts) syncEndpoints() error {
 	defer syncCancel()
 
 	return h.etcdClient.Sync(ctx)
-}
-
-// reconnect reconnect to etcd server
-func (h *EtcdHosts) reconnect() error {
-	cli, err := h.etcdConfig.NewClient()
-	if err != nil {
-		return err
-	}
-	h.Lock()
-	_ = h.etcdClient.Close()
-	h.etcdClient = cli
-	h.Unlock()
-
-	return nil
 }

@@ -8,13 +8,13 @@ import (
 )
 
 type EtcdConfig struct {
-	UserName   string
-	Password   string
-	Endpoints  []string
-	Timeout    time.Duration
-	TLSConfig  *tls.Config
-	HostsKey   string
-	ForceStart bool
+	UserName    string
+	Password    string
+	Endpoints   []string
+	Timeout     time.Duration
+	TLSConfig   *tls.Config
+	HostsKey    string
+	ForceReload time.Duration
 }
 
 func (c *EtcdConfig) NewClient() (*clientv3.Client, error) {

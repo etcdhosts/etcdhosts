@@ -53,7 +53,7 @@ etcdhosts [ZONES...] {
     credentials ETCD_USERNAME ETCD_PASSWORD
     tls ETCD_CERT ETCD_KEY ETCD_CACERT
     timeout ETCD_TIMEOUT
-    force_start BOOLEAN
+    force_reload FORCE_RELOAD_INTERVAL
 }
 ```
 
@@ -69,10 +69,9 @@ etcdhosts . {
 }
 ```
 
-**默认情况下, etcdhosts 插件在首次启动时如果无法连接 Etcd 则会导致 CoreDNS 启动失败,** 这是有意为之, 但考虑到故障恢复
-等问题, 目前增加了 `force_start` 配置用于控制是否允许强制启动; **当配置为 `true` 时 etcdhosts 插件将忽略 etcd 链接错误
-并每 `timeout` 时间进行一次重连.** 在运行期间如果 Etcd 崩溃(节点全挂)则 etcdhosts 仍然提供已缓存的 hosts 配置, 并一直
-进行重连尝试直至成功链接.
+**默认情况下, 即使 Etcd 集群故障也可以启动成功, 插件会在后台自动重连. 同样如果 CoreDNS 启动后 Etcd 集群失联也不会导致解析丢失;
+插件也会自动重连;** 为了保证一些极端情况依然可靠, 从 `v3.10.0` 版本开始增加了 `force_reload` 配置, 当设置后插件将会在指定间隔时间
+强制读取 Etcd 数据进行刷新(读取失败不会删除缓存的 DNS 记录).
 
 ## 三、数据格式
 
