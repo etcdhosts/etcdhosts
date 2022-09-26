@@ -1,6 +1,6 @@
 # etcdhosts
 
-> etcdhosts 是一个 CoreDNS 插件，通过将 hosts 配置存储在 etcd 中实现 hosts 配置统一管理和多节点一致性。
+> etcdhosts 是一个 CoreDNS 插件, 通过将 hosts 配置存储在 etcd 中实现 hosts 配置统一管理和多节点一致性.
 
 <!--ts-->
    * [一、编译安装](#一编译安装)
@@ -57,7 +57,7 @@ etcdhosts [ZONES...] {
 }
 ```
 
-其中 key 默认为 `/etcdhosts`，timeout 默认为 3s，以下是一段样例配置:
+其中 key 默认为 `/etcdhosts`, timeout 默认为 `3s`, 以下是一段样例配置:
 
 ```sh
 etcdhosts . {
@@ -69,11 +69,18 @@ etcdhosts . {
 }
 ```
 
-**默认情况下, 即使 Etcd 集群故障也可以启动成功, 插件会在后台自动重连. 同样如果 CoreDNS 启动后 Etcd 集群失联也不会导致解析丢失;
-插件也会自动重连;** 为了保证一些极端情况依然可靠, 从 `v1.10.0` 版本开始增加了 `force_reload` 配置, 当设置后插件将会在指定间隔时间
+**默认情况下, 即使 Etcd 集群故障也可以启动成功, 插件会在后台自动重连. 同样如果 CoreDNS 启动后 Etcd 集群失联也不会导致解析丢失,
+插件也会自动重连;** 为了保证一些极端情况下依然可靠, 从 `v1.10.0` 版本开始增加了 `force_reload` 配置, 当设置后插件将会在指定间隔时间
 强制读取 Etcd 数据进行刷新(读取失败不会删除缓存的 DNS 记录).
 
 ## 三、数据格式
 
-请求到达 etcdhosts 后，etcdhosts 会向 Etcd 查询相关 key，并使用 value 作为标准的 hosts 文本进行解析；
-所以如果想更新解析只需要将 hosts 文本数据写入 Etcd 既可；etcdhosts 通过 watch api 实时观测并自动重载。
+CoreDNS 启动后 etcdhosts 会向 Etcd 查询指定的 key, 并使用 value 作为标准的 hosts 文本进行解析;
+如果想更新解析只需要将 hosts 文本数据写入 Etcd 指定的 key 既可; 同时 etcdhosts 也会通过 watch api 实时观测并自动重载.
+
+如果想要扩展开发只需要对接标准的 Etcd API 即可, 同样你也可以通过标准的 `etcdctl` 来更新 hosts 文件:
+
+```sh
+# 通过 etcdctl 更新 hosts
+cat hosts | etcdctl put /etcdhosts
+```
