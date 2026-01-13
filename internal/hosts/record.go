@@ -6,10 +6,12 @@ import (
 
 // Re-export types from client-go for backward compatibility.
 type (
-	Record    = client.Record
-	Health    = client.Health
-	CheckType = client.CheckType
-	Entry     = client.Entry
+	Record      = client.Record
+	Health      = client.Health
+	CheckType   = client.CheckType
+	Entry       = client.Entry
+	ParseResult = client.ParseResult
+	ParseError  = client.ParseError
 )
 
 // Re-export constants from client-go.
@@ -24,4 +26,10 @@ const (
 // This is a wrapper around client.ParseRecords for convenience.
 func ParseRecords(data []byte) ([]Record, error) {
 	return client.ParseRecords(data)
+}
+
+// ParseRecordsStrict parses hosts data and collects all parsing errors.
+// Unlike ParseRecords, invalid lines are reported instead of silently skipped.
+func ParseRecordsStrict(data []byte) ParseResult {
+	return client.ParseRecordsStrict(data)
 }

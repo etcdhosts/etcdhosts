@@ -334,13 +334,18 @@ func loadFromEtcd(ctx context.Context, storage etcd.Storage, store *hosts.Store)
 		return nil
 	}
 
-	records, err := hosts.ParseRecords(data)
-	if err != nil {
+	// Use strict parsing to detect errors
+	result := hosts.ParseRecordsStrict(data)
+	if result.HasErrors() {
 		etcdSyncTotal.WithLabelValues(statusError).Inc()
-		return err
+		log.Errorf("Found %d invalid record(s) in etcd data, not reloading:", len(result.Errors))
+		for _, e := range result.Errors {
+			log.Errorf("  - %s", e.String())
+		}
+		return nil
 	}
 
-	store.Update(records)
+	store.Update(result.Records)
 	entriesTotal.Set(float64(store.Len()))
 	etcdSyncTotal.WithLabelValues(statusSuccess).Inc()
 	etcdLastSync.SetToCurrentTime()
@@ -388,14 +393,18 @@ func watchEtcd(ctx context.Context, storage etcd.Storage, store *hosts.Store) {
 				continue
 			}
 
-			records, err := hosts.ParseRecords(data)
-			if err != nil {
-				log.Errorf("Failed to parse hosts data: %v", err)
+			// Use strict parsing to detect errors
+			result := hosts.ParseRecordsStrict(data)
+			if result.HasErrors() {
 				etcdSyncTotal.WithLabelValues(statusError).Inc()
+				log.Errorf("Found %d invalid record(s) in etcd data, not reloading:", len(result.Errors))
+				for _, e := range result.Errors {
+					log.Errorf("  - %s", e.String())
+				}
 				continue
 			}
 
-			store.Update(records)
+			store.Update(result.Records)
 			entriesTotal.Set(float64(store.Len()))
 			etcdSyncTotal.WithLabelValues(statusSuccess).Inc()
 			etcdLastSync.SetToCurrentTime()
