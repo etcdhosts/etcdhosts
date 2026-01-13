@@ -1,41 +1,103 @@
 version: '3'
 
+vars:
+  COREDNS_VERSION: 'v1.14.0'
+  PLUGIN_MODULE: 'github.com/etcdhosts/etcdhosts/v2'
+  IMAGE_NAME: 'etcdhosts/coredns'
+  VERSION:
+    sh: git describe --tags 2>/dev/null || echo "dev"
+
 tasks:
   clean:
+    desc: Clean build artifacts
     cmds:
       - rm -rf coredns dist
+
+  test:
+    desc: Run all tests
+    cmds:
+      - go test -v -race ./...
+
+  test-cover:
+    desc: Run tests with coverage
+    cmds:
+      - go test -v -race -coverprofile=coverage.out ./...
+      - go tool cover -html=coverage.out -o coverage.html
+
+  lint:
+    desc: Run linter
+    cmds:
+      - golangci-lint run ./...
+
   clone-source:
-    vars:
-      VERSION: '{{default "v1.10.1" .VERSION}}'
+    desc: Clone CoreDNS source
+    internal: true
     cmds:
-      - task: clean
-      - mkdir dist
-      - git clone --depth 1 --branch {{.VERSION}} https://github.com/coredns/coredns.git coredns
+      - rm -rf coredns
+      - mkdir -p dist
+      - git clone --depth 1 --branch {{.COREDNS_VERSION}} https://github.com/coredns/coredns.git coredns
+
   add-plugin:
-    vars:
-      ROOT_DIR:
-        sh: git rev-parse --show-toplevel
+    desc: Add etcdhosts plugin to CoreDNS
+    internal: true
     dir: coredns
-    deps: [ clone-source ]
     cmds:
-      - mkdir plugin/etcdhosts
-      - cp ../*.go plugin/etcdhosts
+      # Add external plugin to plugin.cfg
       - |
         {{if eq OS "darwin"}}
-        gsed -i '/^hosts:hosts/i\etcdhosts:etcdhosts' plugin.cfg
+        gsed -i '/^hosts:hosts/i\etcdhosts:{{.PLUGIN_MODULE}}' plugin.cfg
         {{else}}
-        sed -i '/^hosts:hosts/i\etcdhosts:etcdhosts' plugin.cfg
+        sed -i '/^hosts:hosts/i\etcdhosts:{{.PLUGIN_MODULE}}' plugin.cfg
         {{end}}
+      # Add replace directive to use local source
+      - go mod edit -replace={{.PLUGIN_MODULE}}=../
 
-  build:
+  gen:
+    desc: Generate CoreDNS plugin code
+    internal: true
     dir: coredns
     cmds:
       - make -f Makefile gen
+
+  build-all-platforms:
+    desc: Build for all platforms
+    internal: true
+    dir: coredns
+    cmds:
       - make -f Makefile.release build tar DOCKER=coredns
       - mv release/* ../dist
 
-  default:
+  rebuild:
+    desc: Quick rebuild for current platform (use after modifying plugin code)
+    dir: coredns
+    preconditions:
+      - test -d ../coredns
     cmds:
+      - CGO_ENABLED=0 go build -ldflags="-s -w" -o ../dist/coredns
+      - echo "Rebuilt dist/coredns for {{OS}}/{{ARCH}}"
+
+  release:
+    desc: Build all release binaries
+    cmds:
+      - task: test
+      - task: clean
       - task: clone-source
       - task: add-plugin
-      - task: build
+      - task: gen
+      - task: build-all-platforms
+
+  docker:
+    desc: Build Docker image
+    cmds:
+      - docker build --build-arg COREDNS_VERSION={{.COREDNS_VERSION}} -t {{.IMAGE_NAME}}:{{.VERSION}} -t {{.IMAGE_NAME}}:latest .
+
+  docker-push:
+    desc: Push Docker image to registry
+    cmds:
+      - docker push {{.IMAGE_NAME}}:{{.VERSION}}
+      - docker push {{.IMAGE_NAME}}:latest
+
+  docker-multiarch:
+    desc: Build and push multi-arch Docker image (requires buildx)
+    cmds:
+      - docker buildx build --platform linux/amd64,linux/arm64 --build-arg COREDNS_VERSION={{.COREDNS_VERSION}} -t {{.IMAGE_NAME}}:{{.VERSION}} -t {{.IMAGE_NAME}}:latest --push .

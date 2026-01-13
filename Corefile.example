@@ -1,0 +1,10 @@
+. {
+    etcdhosts {
+        endpoint http://localhost:2379
+        key /etcdhosts
+        fallthrough
+    }
+    forward . 8.8.8.8 8.8.4.4
+    log
+    errors
+}

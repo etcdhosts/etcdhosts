@@ -54,3 +54,4 @@ gen
 
 coredns
 dist/
+.claude/

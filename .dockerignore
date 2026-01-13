@@ -1,0 +1,23 @@
+# Build artifacts
+dist/
+coredns/
+coverage.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# Claude
+.claude/
+
+# Test data
+testdata/

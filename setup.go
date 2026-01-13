@@ -2,200 +2,411 @@ package etcdhosts
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"os"
 	"strconv"
-	"strings"
 	"time"
 
-	clientv3 "go.etcd.io/etcd/client/v3"
-
+	"github.com/coredns/caddy"
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
-	mwtls "github.com/coredns/coredns/plugin/pkg/tls"
 
-	"github.com/coredns/caddy"
+	"github.com/etcdhosts/etcdhosts/v2/internal/etcd"
+	"github.com/etcdhosts/etcdhosts/v2/internal/healthcheck"
+	"github.com/etcdhosts/etcdhosts/v2/internal/hosts"
+	"github.com/etcdhosts/etcdhosts/v2/internal/loadbalance"
 )
 
-var log = clog.NewWithPlugin("etcdhosts")
+var log = clog.NewWithPlugin(pluginName)
 
-func init() { plugin.Register("etcdhosts", setup) }
+// Default configuration values
+const (
+	defaultTTL     = 3600
+	defaultTimeout = 5 * time.Second
+)
+
+// etcdHostsConfig holds the parsed configuration.
+type etcdHostsConfig struct {
+	endpoints       []string
+	username        string
+	password        string
+	tlsConfig       *tls.Config
+	timeout         time.Duration
+	storageMode     etcd.StorageMode
+	key             string
+	ttl             uint32
+	healthcheckCfg  *healthcheck.Config
+	enableHealthCfg bool
+}
 
 func setup(c *caddy.Controller) error {
-	h, err := hostsParse(c)
+	eh, cfg, err := parseConfig(c)
 	if err != nil {
-		return plugin.Error("etcdhosts", err)
+		return plugin.Error(pluginName, err)
 	}
 
-	updateCancel := h.periodicHostsUpdate()
+	// Context for managing lifecycle
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Create etcd client
+	etcdClient, err := etcd.NewClient(&etcd.Config{
+		Endpoints:   cfg.endpoints,
+		Username:    cfg.username,
+		Password:    cfg.password,
+		TLSConfig:   cfg.tlsConfig,
+		DialTimeout: cfg.timeout,
+		Key:         cfg.key,
+		Mode:        cfg.storageMode,
+	})
+	if err != nil {
+		cancel()
+		return plugin.Error(pluginName, err)
+	}
+
+	storage := etcdClient.Storage()
 
 	c.OnStartup(func() error {
-		h.readEtcdHosts()
+		// Load initial data from etcd
+		if err := loadFromEtcd(ctx, storage, eh.store); err != nil {
+			log.Warningf("Failed to load initial data from etcd: %v", err)
+		}
+
+		// Start etcd watcher in background
+		go watchEtcd(ctx, storage, eh.store)
+
+		// Start health checker if configured
+		if cfg.enableHealthCfg && eh.checker != nil {
+			go eh.checker.Start(ctx)
+		}
+
 		return nil
 	})
 
 	c.OnShutdown(func() error {
-		updateCancel()
+		cancel()
+		if eh.checker != nil {
+			eh.checker.Stop()
+		}
+		_ = storage.Close()
+		_ = etcdClient.Close()
 		return nil
 	})
 
 	dnsserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
-		h.Next = next
-		return h
+		eh.Next = next
+		return eh
 	})
 
 	return nil
 }
 
-func hostsParse(c *caddy.Controller) (*EtcdHosts, error) {
-	h := &EtcdHosts{
-		HostsFile: &HostsFile{
-			hmap:    newMap(),
-			inline:  newMap(),
-			options: newOptions(),
-		},
-		etcdConfig: &EtcdConfig{},
+func parseConfig(c *caddy.Controller) (*EtcdHosts, *etcdHostsConfig, error) {
+	cfg := &etcdHostsConfig{
+		timeout:     defaultTimeout,
+		key:         etcd.DefaultKey,
+		ttl:         defaultTTL,
+		storageMode: etcd.ModeSingle,
 	}
 
-	var inline []string
+	eh := &EtcdHosts{
+		TTL:      defaultTTL,
+		store:    hosts.NewStore(),
+		balancer: loadbalance.NewWeightedBalancer(),
+	}
+
 	i := 0
 	for c.Next() {
 		if i > 0 {
-			return h, plugin.ErrOnce
+			return nil, nil, plugin.ErrOnce
 		}
 		i++
 
-		h.Origins = plugin.OriginsFromArgsOrServerBlock(c.RemainingArgs(), c.ServerBlockKeys)
+		// Parse zone origins from args
+		args := c.RemainingArgs()
+		eh.Origins = plugin.OriginsFromArgsOrServerBlock(args, c.ServerBlockKeys)
 
 		for c.NextBlock() {
 			switch c.Val() {
-			case "fallthrough":
-				h.Fall.SetZonesFromArgs(c.RemainingArgs())
-			case "no_reverse":
-				h.options.autoReverse = false
-			case "ttl":
-				remaining := c.RemainingArgs()
-				if len(remaining) < 1 {
-					return h, c.Errf("ttl needs a time in second")
-				}
-				ttl, err := strconv.Atoi(remaining[0])
-				if err != nil {
-					return h, c.Errf("ttl needs a number of second")
-				}
-				if ttl <= 0 || ttl > 65535 {
-					return h, c.Errf("ttl provided is invalid")
-				}
-				h.options.ttl = uint32(ttl)
-			case "tls":
-				remaining := c.RemainingArgs()
-				tlsConfig, err := mwtls.NewTLSConfigFromArgs(remaining...)
-				if err != nil {
-					return h, c.Errf("failed to load etcd tls config: %s", err.Error())
-				}
-				h.etcdConfig.TLSConfig = tlsConfig
 			case "endpoint":
-				remaining := c.RemainingArgs()
-				if len(remaining) == 0 {
-					return h, c.ArgErr()
+				args := c.RemainingArgs()
+				if len(args) == 0 {
+					return nil, nil, c.ArgErr()
 				}
-				h.etcdConfig.Endpoints = remaining
-			case "timeout":
-				remaining := c.RemainingArgs()
-				if len(remaining) != 1 {
-					return h, c.Errf("timeout needs a duration")
-				}
-				timeout, err := time.ParseDuration(remaining[0])
-				if err != nil {
-					return h, c.Errf("invalid duration for timeout '%s'", remaining[0])
-				}
-				h.etcdConfig.Timeout = timeout
-			case "key":
-				remaining := c.RemainingArgs()
-				if len(remaining) != 1 {
-					return h, c.Errf("etcd hosts key needs a string")
-				}
-				h.etcdConfig.HostsKey = remaining[0]
+				cfg.endpoints = args
+
 			case "credentials":
-				remaining := c.RemainingArgs()
-				if len(remaining) == 0 {
-					return h, c.ArgErr()
+				args := c.RemainingArgs()
+				if len(args) != 2 {
+					return nil, nil, c.Errf("credentials requires username and password")
 				}
-				if len(remaining) != 2 {
-					return h, c.Errf("credentials requires 2 arguments, username and password")
+				cfg.username = args[0]
+				cfg.password = args[1]
+
+			case "tls":
+				args := c.RemainingArgs()
+				if len(args) < 1 || len(args) > 3 {
+					return nil, nil, c.Errf("tls requires 1-3 arguments: cert [key] [ca]")
 				}
-				h.etcdConfig.UserName, h.etcdConfig.Password = remaining[0], remaining[1]
-			case "force_reload":
-				remaining := c.RemainingArgs()
-				if len(remaining) != 1 {
-					return h, c.Errf("force_reload needs a duration")
-				}
-				forceReload, err := time.ParseDuration(remaining[0])
+				tlsCfg, err := parseTLS(args)
 				if err != nil {
-					return h, c.Errf("invalid duration for force_reload '%s'", remaining[0])
+					return nil, nil, c.Errf("tls config error: %v", err)
 				}
-				h.etcdConfig.ForceReload = forceReload
+				cfg.tlsConfig = tlsCfg
+
+			case "timeout":
+				args := c.RemainingArgs()
+				if len(args) != 1 {
+					return nil, nil, c.ArgErr()
+				}
+				timeout, err := time.ParseDuration(args[0])
+				if err != nil {
+					return nil, nil, c.Errf("invalid timeout: %v", err)
+				}
+				cfg.timeout = timeout
+
+			case "storage":
+				args := c.RemainingArgs()
+				if len(args) != 1 {
+					return nil, nil, c.ArgErr()
+				}
+				switch args[0] {
+				case "single":
+					cfg.storageMode = etcd.ModeSingle
+				case "perhost":
+					cfg.storageMode = etcd.ModePerHost
+				default:
+					return nil, nil, c.Errf("invalid storage mode: %s", args[0])
+				}
+
+			case "key":
+				args := c.RemainingArgs()
+				if len(args) != 1 {
+					return nil, nil, c.ArgErr()
+				}
+				cfg.key = args[0]
+
+			case "ttl":
+				args := c.RemainingArgs()
+				if len(args) != 1 {
+					return nil, nil, c.ArgErr()
+				}
+				ttl, err := strconv.Atoi(args[0])
+				if err != nil || ttl <= 0 || ttl > 65535 {
+					return nil, nil, c.Errf("invalid ttl: %s", args[0])
+				}
+				cfg.ttl = uint32(ttl)
+				eh.TTL = uint32(ttl)
+
+			case "fallthrough":
+				eh.Fall.SetZonesFromArgs(c.RemainingArgs())
+
+			case "healthcheck":
+				cfg.enableHealthCfg = true
+				hcCfg, err := parseHealthcheck(c)
+				if err != nil {
+					return nil, nil, err
+				}
+				cfg.healthcheckCfg = hcCfg
+				eh.checker = healthcheck.NewChecker(hcCfg)
+
 			default:
-				if len(h.Fall.Zones) == 0 {
-					line := strings.Join(append([]string{c.Val()}, c.RemainingArgs()...), " ")
-					inline = append(inline, line)
-					continue
-				}
-				return h, c.Errf("unknown property '%s'", c.Val())
+				return nil, nil, c.Errf("unknown property: %s", c.Val())
 			}
 		}
 	}
 
-	// default etcd key
-	if h.etcdConfig.HostsKey == "" {
-		h.etcdConfig.HostsKey = "/etcdhosts"
+	// Validate required config
+	if len(cfg.endpoints) == 0 {
+		return nil, nil, c.Errf("endpoint is required")
 	}
 
-	// default etcd client timeout
-	if h.etcdConfig.Timeout == 0 {
-		h.etcdConfig.Timeout = 3 * time.Second
-	}
-
-	// create etcd client
-	if err := h.initEtcdClient(); err != nil {
-		return nil, c.Errf("failed to create etcd client: %s", err)
-	}
-
-	h.initInline(inline)
-	return h, nil
+	return eh, cfg, nil
 }
 
-func (h *EtcdHosts) periodicHostsUpdate() context.CancelFunc {
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		reloadTick := make(<-chan time.Time)
-		if h.etcdConfig.ForceReload > 0 {
-			reloadTick = time.Tick(h.etcdConfig.ForceReload)
-		}
-		watchCh := h.etcdClient.Watch(clientv3.WithRequireLeader(context.Background()), h.etcdConfig.HostsKey)
-		for {
-			select {
-			case <-ctx.Done():
-				if err := h.closeClient(); err != nil {
-					log.Errorf("etcdhosts client close failed: %s", err.Error())
-				}
-				return
-			case <-time.Tick(1 * time.Minute):
-				if err := h.syncEndpoints(); err != nil {
-					log.Errorf("etcdhosts client sync error: %s", err.Error())
-					continue
-				}
-				log.Infof("etcdhosts client endpoints sync success: %v", h.etcdClient.Endpoints())
-			case <-reloadTick:
-				log.Info("etcdhosts force reloading...")
-				h.readEtcdHosts()
-			case _, ok := <-watchCh:
-				if !ok {
-					log.Error("failed to watch etcd events: channel read failed")
-					continue
-				}
-				log.Info("etcdhosts reloading...")
-				h.readEtcdHosts()
+func parseHealthcheck(c *caddy.Controller) (*healthcheck.Config, error) {
+	cfg := healthcheck.DefaultConfig()
+
+	for c.NextBlock() {
+		switch c.Val() {
+		case "interval":
+			args := c.RemainingArgs()
+			if len(args) != 1 {
+				return nil, c.ArgErr()
 			}
+			interval, err := time.ParseDuration(args[0])
+			if err != nil {
+				return nil, c.Errf("invalid interval: %v", err)
+			}
+			cfg.Interval = interval
+
+		case "timeout":
+			args := c.RemainingArgs()
+			if len(args) != 1 {
+				return nil, c.ArgErr()
+			}
+			timeout, err := time.ParseDuration(args[0])
+			if err != nil {
+				return nil, c.Errf("invalid timeout: %v", err)
+			}
+			cfg.Timeout = timeout
+
+		case "max_concurrent":
+			args := c.RemainingArgs()
+			if len(args) != 1 {
+				return nil, c.ArgErr()
+			}
+			maxConcurrent, err := strconv.Atoi(args[0])
+			if err != nil || maxConcurrent <= 0 {
+				return nil, c.Errf("invalid max_concurrent: %s", args[0])
+			}
+			cfg.MaxConcurrent = maxConcurrent
+
+		case "unhealthy_policy":
+			args := c.RemainingArgs()
+			if len(args) != 1 {
+				return nil, c.ArgErr()
+			}
+			switch args[0] {
+			case "return_all":
+				cfg.UnhealthyPolicy = healthcheck.PolicyReturnAll
+			case "return_empty":
+				cfg.UnhealthyPolicy = healthcheck.PolicyReturnEmpty
+			case "fallthrough":
+				cfg.UnhealthyPolicy = healthcheck.PolicyFallthrough
+			default:
+				return nil, c.Errf("invalid unhealthy_policy: %s", args[0])
+			}
+
+		default:
+			return nil, c.Errf("unknown healthcheck property: %s", c.Val())
 		}
-	}()
-	return cancel
+	}
+
+	return cfg, nil
+}
+
+func parseTLS(args []string) (*tls.Config, error) {
+	cfg := &tls.Config{}
+
+	// Load certificate and key
+	cert := args[0]
+	key := cert
+	if len(args) >= 2 {
+		key = args[1]
+	}
+
+	certificate, err := tls.LoadX509KeyPair(cert, key)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Certificates = []tls.Certificate{certificate}
+
+	// Load CA certificate if provided
+	if len(args) >= 3 {
+		caCert, err := os.ReadFile(args[2])
+		if err != nil {
+			return nil, err
+		}
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, err
+		}
+		cfg.RootCAs = caCertPool
+	}
+
+	return cfg, nil
+}
+
+func loadFromEtcd(ctx context.Context, storage etcd.Storage, store *hosts.Store) error {
+	data, _, err := storage.Load(ctx)
+	if err != nil {
+		etcdSyncTotal.WithLabelValues(statusError).Inc()
+		return err
+	}
+
+	if data == nil {
+		log.Info("No hosts data found in etcd")
+		entriesTotal.Set(0)
+		etcdSyncTotal.WithLabelValues(statusSuccess).Inc()
+		etcdLastSync.SetToCurrentTime()
+		return nil
+	}
+
+	records, err := hosts.ParseRecords(data)
+	if err != nil {
+		etcdSyncTotal.WithLabelValues(statusError).Inc()
+		return err
+	}
+
+	store.Update(records)
+	entriesTotal.Set(float64(store.Len()))
+	etcdSyncTotal.WithLabelValues(statusSuccess).Inc()
+	etcdLastSync.SetToCurrentTime()
+
+	log.Infof("Loaded %d host entries from etcd", store.Len())
+	return nil
+}
+
+func watchEtcd(ctx context.Context, storage etcd.Storage, store *hosts.Store) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		eventCh := storage.Watch(ctx)
+		for event := range eventCh {
+			if event.Err != nil {
+				log.Errorf("etcd watch error: %v", event.Err)
+				etcdSyncTotal.WithLabelValues(statusError).Inc()
+				break // Reconnect
+			}
+
+			var data []byte
+			if event.Data != nil {
+				data = event.Data
+			} else {
+				// For per-host mode, we need to reload
+				var err error
+				data, _, err = storage.Load(ctx)
+				if err != nil {
+					log.Errorf("Failed to reload from etcd: %v", err)
+					etcdSyncTotal.WithLabelValues(statusError).Inc()
+					continue
+				}
+			}
+
+			if data == nil {
+				store.Update(nil)
+				entriesTotal.Set(0)
+				etcdSyncTotal.WithLabelValues(statusSuccess).Inc()
+				etcdLastSync.SetToCurrentTime()
+				log.Info("etcd data cleared")
+				continue
+			}
+
+			records, err := hosts.ParseRecords(data)
+			if err != nil {
+				log.Errorf("Failed to parse hosts data: %v", err)
+				etcdSyncTotal.WithLabelValues(statusError).Inc()
+				continue
+			}
+
+			store.Update(records)
+			entriesTotal.Set(float64(store.Len()))
+			etcdSyncTotal.WithLabelValues(statusSuccess).Inc()
+			etcdLastSync.SetToCurrentTime()
+			log.Infof("Reloaded %d host entries from etcd", store.Len())
+		}
+
+		// Small delay before reconnecting
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Second):
+		}
+	}
 }
